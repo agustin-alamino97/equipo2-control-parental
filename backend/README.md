@@ -11,7 +11,7 @@ Sigue estos pasos para levantar el servidor de desarrollo localmente:
 ### Prerrequisitos
 
 1. **Node.js**: Asegúrate de tener instalado Node.js (versión 18 o superior recomendada). Puedes descargarlo desde [nodejs.org](https://nodejs.org/).
-2. **Base de Datos**: PostgreSQL en ejecución con la estructura de tablas migrada (`users`, `devices`, `pairing_codes`, `events`, `alerts`, `system_blocklist`, `custom_blocklist`).
+2. **Base de Datos**: En supabase, contiene las tablas usadas en este code (`users`, `devices`, `pairing_codes`, `events`, `alerts`, `system_blocklist`, `custom_blocklist`).
 
 ### Pasos para ejecutar:
 
