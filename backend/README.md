@@ -200,9 +200,14 @@ Desvincula un dispositivo de la cuenta del tutor (`linked = false`).
 * **Respuesta Exitosa (200)**:
   ```json
   {
-    "success": true,
-    "message": "Dispositivo desvinculado con éxito"
-  }
+     "message": "Dispositivo desvinculado y credencial revocada con éxito",
+     "device": {
+       "id": "8bd693c0-1b9a-4b07-a059-72986a29b594",
+       "alias_name": "Ana",
+       "linked": false,
+       "protection_status": false
+     }
+   }
   ```
 
 ---
