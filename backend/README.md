@@ -100,9 +100,40 @@ Autentica al tutor y le provee un token JWT.
       "email": "tutor@ejemplo.com",
       "name": "Tutor"
     },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjQ1MDJmODQyLTI1ZDctNGRlNS1iZDU0LTgzYjUwNzhmYTdkYSIsImVtYWlsIjoidHV0b3JAZWplbXBsby5jb20iLCJpYXQiOjE3OTI0NTI5ODAsImV4cCI6MTc5MjUzOTM4MH0.9o1iUFsG8CrBOktiDHsK4LNqlt4Adp5Ic3tGiYLRjSQ",
-    "refreshToken": "2aa8b8ac7ab50de97429a0030b8c31356e6fcc2029836c3f1714d7712298c5f99b1c8f69f377c5d6"
+    "JWT": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjQ1MDJmODQyLTI1ZDctNGRlNS1iZDU0LTgzYjUwNzhmYTdkYSIsImVtYWlsIjoidHV0b3JAZWplbXBsby5jb20iLCJpYXQiOjE3OTI0NTI5ODAsImV4cCI6MTc5MjUzOTM4MH0.9o1iUFsG8CrBOktiDHsK4LNqlt4Adp5Ic3tGiYLRjSQ",
+    "refresh_token": "2aa8b8ac7ab50de97429a0030b8c31356e6fcc2029836c3f1714d7712298c5f99b1c8f69f377c5d6"
   }
+  ```
+
+#### C. Refresh (Tutor)
+Obtiene un nuevo JWT (24h) presentando su refresh token.
+* **Método**: `POST`
+* **Ruta**: `localhost:3000/auth/refresh`
+* **Headers**: `Content-Type: application/json`
+* **Body (JSON)**:
+  ```json
+  {
+    ""refresh_token": "2aa8b8ac7ab50de97429a0030b8c31356e6fcc2029836c3f1714d7712298c5f99b1c8f69f377c5d6"
+  }
+  ```
+* **Respuesta Exitosa (201)**:
+  ```json
+  {
+  "message": "Token refrescado con éxito",
+  "JWT": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjYyZDUxOGQwLTFkZGItNDIxZS1hODFhLWQ5OGFjYTRmNGFmOCIsImlhdCI6MTc5MjY5NzU3MSwiZXhwIjoxNzkyNzgzOTcxfQ.8i_kT4iRfNmcJtIyIMg8zqnE4-0XHzfwcuvPkCeT81A"
+   }
+  ```
+
+#### D. Logout (Tutor)
+Crea una nueva cuenta de tutor en el sistema.
+* **Método**: `POST`
+* **Ruta**: `localhost:3000/auth/logout`
+* **Headers**: `Authorization: Bearer <JWT_DEL_TUTOR>`
+* **Respuesta Exitosa (201)**:
+  ```json
+  {
+  "message": "Sesión cerrada exitosamente en este dispositivo."
+   }
   ```
 
 ---
