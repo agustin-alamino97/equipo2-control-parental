@@ -113,7 +113,7 @@ Obtiene un nuevo JWT (24h) presentando su refresh token.
 * **Body (JSON)**:
   ```json
   {
-    ""refresh_token": "2aa8b8ac7ab50de97429a0030b8c31356e6fcc2029836c3f1714d7712298c5f99b1c8f69f377c5d6"
+    "refresh_token": "2aa8b8ac7ab50de97429a0030b8c31356e6fcc2029836c3f1714d7712298c5f99b1c8f69f377c5d6"
   }
   ```
 * **Respuesta Exitosa (201)**:
