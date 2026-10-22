@@ -55,25 +55,37 @@ const login = async (credentials, reqInfo = {}) => {
   const userResult = await db.query('SELECT * FROM users WHERE email = $1', [email]);
   const user = userResult.rows[0];
 
+  // Nota: Usamos bcrypt SOLO para la contraseña del usuario (como debe ser)
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     throw new Error('CREDENCIALES_INVALIDAS');
   }
 
-  // 2. Firmar token JWT con vigencia de 24 horas
+  // 2. Firmar token JWT de acceso (vigencia corta: 24 horas)
   const token = jwt.sign(
     { id: user.id, email: user.email },
     JWT_SECRET,
     { expiresIn: '24h' }
   );
 
-  // 3. Generar refresh token seguro, hashearlo y registrar la sesión (Vigencia 7 días)
+  // 3. Generar refresh token seguro en texto plano 
   const refreshToken = crypto.randomBytes(40).toString('hex');
-  const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  
+  // 4. Hashear el refresh token usando SHA-256 (rápido y seguro para la BD)
+  const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
 
+  // 5. UPSERT: Inserta la sesión o actualiza la existente para este usuario y dispositivo (id_user + device_info)
   await db.query(
-    `INSERT INTO user_sessions (id_user, refresh_token_hash, push_token, device_info, ip_address, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO user_sessions (id_user, refresh_token_hash, push_token, device_info, ip_address, expires_at, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, true)
+     ON CONFLICT (id_user, device_info) 
+     DO UPDATE SET 
+       refresh_token_hash = EXCLUDED.refresh_token_hash,
+       push_token = EXCLUDED.push_token,
+       ip_address = EXCLUDED.ip_address,
+       expires_at = EXCLUDED.expires_at,
+       is_active = true,
+       last_active_at = CURRENT_TIMESTAMP`,
     [
       user.id,
       refreshTokenHash,
@@ -84,15 +96,92 @@ const login = async (credentials, reqInfo = {}) => {
     ]
   );
 
+  // 6. Retornar el token de acceso, el refresh token plano (que el cliente guardará de forma segura) y los datos del usuario
   return {
-    message: 'Login exitoso',
-    user: { id: user.id, email: user.email, name: user.name },
-    token,
-    refreshToken
+    JWT: token,
+    refresh_token: refreshToken, 
+    user: {
+      id: user.id,
+      email: user.email
+    }
   };
+};
+
+const refreshTokenService = async (incomingRefreshToken, deviceInfo = null) => {
+  if (!incomingRefreshToken) {
+    throw new Error('TOKEN_REQUERIDO');
+  }
+
+  // 1. Hashear el token recibido para compararlo con el de la BD
+  const tokenHash = crypto.createHash('sha256').update(incomingRefreshToken).digest('hex');
+
+  // 2. Buscar la sesión activa en la base de datos
+  // (Si quieres blindarlo al dispositivo, puedes validar también el device_info)
+  const sessionResult = await db.query(
+    `SELECT * FROM user_sessions 
+     WHERE refresh_token_hash = $1 
+       AND is_active = true 
+       AND expires_at > NOW()`,
+    [tokenHash]
+  );
+
+  const session = sessionResult.rows[0];
+
+  if (!session) {
+    throw new Error('SESION_INVALIDA_O_EXPIRADA');
+  }
+
+  // 3. Opcional pero recomendado: Validar que el dispositivo coincida si se envía
+  if (deviceInfo && session.device_info && session.device_info !== deviceInfo) {
+    throw new Error('DISPOSITIVO_NO_COINCIDE');
+  }
+
+  // 4. Generar un NUEVO Access Token de corta duración (24 horas)
+  const newAccessToken = jwt.sign(
+    { id: session.id_user },
+    JWT_SECRET,
+    { expiresIn: '24h' }
+  );
+
+  // 5. Actualizar la fecha de última actividad de la sesión
+  await db.query(
+    `UPDATE user_sessions 
+     SET last_active_at = CURRENT_TIMESTAMP 
+     WHERE id = $1`,
+    [session.id]
+  );
+
+  // 6. Retornar el nuevo access token
+  return {
+    JWT: newAccessToken
+  };
+};
+
+const logoutService = async (userId, deviceInfo = null) => {
+  if (!userId) {
+    throw new Error('USUARIO_REQUERIDO');
+  }
+
+  // Desactivamos la sesión activa para este usuario y dispositivo específico
+  // Si deviceInfo viene nulo, podemos actualizar la sesión más reciente o usar el match exacto.
+  const result = await db.query(
+    `UPDATE user_sessions 
+     SET is_active = false, 
+         refresh_token_hash = NULL, 
+         push_token = NULL, 
+         ip_address = NULL,
+         expires_at = CURRENT_TIMESTAMP,
+         last_active_at = CURRENT_TIMESTAMP
+     WHERE id_user = $1 AND device_info = $2 AND is_active = true`,
+    [userId, deviceInfo]
+  );
+
+  return { success: true, rowsAffected: result.rowCount };
 };
 
 module.exports = {
   register,
-  login
+  login,
+  refreshTokenService,
+  logoutService
 };

@@ -14,9 +14,10 @@ router.post('/register', authController.register);
 // Inicio de sesión para tutores
 router.post('/login', authController.login);
 
-// Ruta protegida de prueba/verificación de sesión
-// router.get('/me', authMiddleware, (req, res) => {
-//   res.json({ message: 'Acceso concedido', user: req.user });
-// });
+// Ruta de Refresh
+router.post('/refresh', authController.refresh);
+
+// Ruta de Logout 
+router.post('/logout', authMiddleware, authController.logout);
 
 module.exports = router;

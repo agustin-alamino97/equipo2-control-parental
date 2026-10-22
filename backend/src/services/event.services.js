@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const notificationService = require('./notifications/notification.service');
+const notificationService = require('./notifications/notification.services');
 
 // ============================================================================
 // FUNCIONES AUXILIARES Y LÓGICA DE NEGOCIO

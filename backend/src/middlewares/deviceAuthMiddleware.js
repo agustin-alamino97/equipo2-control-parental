@@ -13,13 +13,24 @@ const deviceAuthMiddleware = async (req, res, next) => {
 
   const deviceToken = authHeader.split(' ')[1];
 
-  // Extraer el device_uuid que viene en la petición (soporta objeto único o batch/arreglo)
-  const payloadUuid = Array.isArray(req.body) 
-    ? req.body[0]?.device_uuid 
-    : req.body?.device_uuid;
+// Extracción orientada al verbo HTTP
+  let payloadUuid;
+
+  if (req.method === 'GET') {
+    // Si es GET, lo busca en los parámetros de la URL
+    payloadUuid = req.query?.device_uuid;
+  } else {
+    // Si es POST (o cualquier otro método), lo busca en el body
+    if (Array.isArray(req.body)) {
+      payloadUuid = req.body[0]?.device_uuid;
+    } else {
+      payloadUuid = req.body?.device_uuid;
+    }
+  }
 
   if (!payloadUuid) {
-    return res.status(400).json({ error: 'El campo device_uuid es requerido en el cuerpo de la petición' });
+    const origin = req.method === 'GET' ? 'los parámetros de la URL (query)' : 'el cuerpo de la petición (body)';
+    return res.status(400).json({ error: `El campo device_uuid es requerido en ${origin}` });
   }
 
   try {
