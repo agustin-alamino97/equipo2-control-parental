@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const notificationService = require('./notifications/notification.services');
+const { normalizeValue } = require('../utils/normalizeDomains');
 
 class SyncService {
   async getSystemRules({ clientVersion, clientChecksum }) {
@@ -46,17 +47,17 @@ class SyncService {
 
   return {
     status: 'RESET',
-    current_version: serverVersion,
-    checksum: serverChecksum,
+    //current_version: serverVersion,
+    //checksum: serverChecksum,
     data: {
-      total: rules.length,
-      domain,
-      keyword,
-      regex,
-      syncedAt: new Date().toISOString()
-    }
-  };
-}
+        total: rules.length,
+        domain,
+        keyword,
+        regex,
+        syncedAt: new Date().toISOString()
+      }
+    };
+  }
 
   /**
    * Consulta en tiempo real de las reglas personalizadas para la app/panel del Tutor.
@@ -73,14 +74,14 @@ class SyncService {
 
     const rules = rulesResult.rows;
 
-    const value = rules.filter(item => item.rule_type === 'value').map(item => item.value);
+    const domain = rules.filter(item => item.rule_type === 'domain').map(item => item.value);
     const keyword = rules.filter(item => item.rule_type === 'keyword').map(item => item.value);
 
     const lastCreation = rules.length > 0 ? rules[0].creation_time : null;
 
     return {
       total: rules.length,
-      value,
+      domain,
       keyword,
       updatedAt: lastCreation ? new Date(lastCreation).toISOString() : null
     };
@@ -100,7 +101,7 @@ class SyncService {
     throw error;
   }
 
-  const cleanvalue = value.trim().toLowerCase();
+  const cleanvalue = normalizeValue(ruleType, value);
 
   // UPSERT usando id_user y active
   const query = `
@@ -143,12 +144,12 @@ class SyncService {
   }
 
   return {
-    success: true,
-    message: 'Regla agregada o actualizada correctamente',
-    data: createdRule,
-    notifiedDevicesCount: pushTokens.length
-  };
-}
+      success: true,
+      message: 'Regla agregada o actualizada correctamente',
+      data: createdRule,
+      notifiedDevicesCount: pushTokens.length
+    };
+  }
 
   /**
    * Sincronización de reglas personalizadas para dispositivos protegidos.
@@ -181,8 +182,8 @@ class SyncService {
   if (isUpToDate) {
     return {
       status: 'UP_TO_DATE',
-      //current_timestamp: serverTimestamp,
-      //checksum: serverChecksum,
+      current_timestamp: serverTimestamp,
+      checksum: serverChecksum,
       syncedAt: new Date().toISOString()
     };
   }
@@ -202,8 +203,8 @@ class SyncService {
 
   return {
     status: 'RESET',
-    //current_timestamp: serverTimestamp,
-    //checksum: serverChecksum,
+    current_timestamp: serverTimestamp,
+    checksum: serverChecksum,
     data: {
       total: rules.length,
       domain, 

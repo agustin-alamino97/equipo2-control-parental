@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const notificationService = require('./notifications/notification.services');
+const { normalizeValue } = require('../utils/normalizeDomains');
 
 // ============================================================================
 // FUNCIONES AUXILIARES Y LÓGICA DE NEGOCIO
@@ -129,22 +130,6 @@ const procesarAlertaSiCorresponde = async (evento, deviceId) => {
 // ============================================================================
 // REGISTRO Y PERSISTENCIA DE EVENTOS
 // ============================================================================
-
-const normalizeValue = (eventType, rawValue) => {
-  if (!rawValue) return '';
-  
-  if (eventType === 'domain') {
-    try {
-      const urlToParse = rawValue.startsWith('http') ? rawValue : `https://${rawValue}`;
-      const parsed = new URL(urlToParse);
-      return parsed.hostname.toLowerCase();
-    } catch {
-      return rawValue.trim().toLowerCase();
-    }
-  }
-  
-  return rawValue.trim();
-};
 
 /**
  * Procesa y registra un evento individual de forma idempotente.
@@ -428,7 +413,7 @@ const markAlertAsRead = async (alertId, userId) => {
     UPDATE alerts a
     SET read = true
     FROM protection_events pe
-    JOIN devices d ON pe.id_device = d.id
+    JOIN devices d ON pe.idsw_device = d.id
     WHERE a.id_event = pe.id 
       AND a.id = $1 
       AND d.id_user = $2
