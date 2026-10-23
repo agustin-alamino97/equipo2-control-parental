@@ -203,24 +203,19 @@ Lista todos los dispositivos asociados a la cuenta del tutor.
 * **Respuesta Exitosa (200)**:
   ```json
   {
-    "devices": [
-      {
-        "id": "8bd693c0-1b9a-4b07-a059-72986a29b594",
-        "id_user": "4502f842-25d7-4de5-bd54-83b5078fa7da",
-        "alias_name": "Ana",
-        "birth_date": "2014-08-21T03:00:00.000Z",
-        "gender": "Femenino",
-        "device_uuid": "android-device-pairing-12345",
-        "os_model": "Galaxy s10",
-        "protection_status": true,
-        "linked": true,
-        "push_token": "pushToken_abc23454321",
-        "last_ping": "2026-10-19T23:39:08.849Z",
-        "creation_time": "2026-10-19T12:38:23.445Z",
-        "device_token": "dev_ak_8ce3d754ee8042908352ef6f3f03c4fcc7f1a9e395a5c3526c1eb3fd8328b237"
-      }
-    ]
-  }
+     "devices": [
+       {
+         "id": "132ccd04-277f-4702-b349-72794d20cdf2",
+         "device_uuid": "android-device-pairing-12345",
+         "alias_name": "Ana",
+         "os_model": "Android 13",
+         "protection_status": true,
+         "linked": true,
+         "last_ping": "2026-10-23T22:49:29.108Z",
+         "creation_time": "2026-10-23T22:49:29.108Z"
+       }
+     ]
+   }
   ```
 
 #### D. Desvincular Dispositivo (Tutor)
@@ -258,39 +253,24 @@ Registra un evento de actividad o intento de acceso bloqueado desde el dispositi
   ```json
   {
     "device_uuid": "android-device-pairing-12345",
-    "event_type": "lotba",
-    "url": "https://bet365.com",
-    "detail": {
-      "category": "Apuestas Online",
-      "action": "Bloqueo Automático"
-    }
+    "event_type": "domain",
+    "value": "https://www.bet365.com/index"
   }
   ```
 * **Respuesta Exitosa (201)**:
   ```json
   {
-    "message": "Evento registrado con éxito",
-    "events": {
-      "id": "4b19d686-9d1d-44d0-abf1-267d528a73ff",
-      "id_device": "8bd693c0-1b9a-4b07-a059-72986a29b594",
-      "event_type": "lotba",
-      "url": "https://bet365.com",
-      "detail": {
-        "action": "Bloqueo Automático",
-        "category": "Apuestas Online"
-      },
-      "event_time": "2026-10-19T23:42:44.626Z",
-      "es_critico": true,
-      "alert": {
-        "id": "4c411db8-e867-473f-8f5d-c53742eeaa2f",
-        "id_event": "4b19d686-9d1d-44d0-abf1-267d528a73ff",
-        "severity": "critical",
-        "message": "🚨 Alerta de Apuestas en Ana",
-        "read": false,
-        "alert_time": "2026-10-19T23:42:44.626Z"
-      }
-    }
-  }
+     "message": "Evento registrado con éxito",
+     "event": {
+       "id": "17eaf8bf-a03b-440d-bbe2-cb0784f2be38",
+       "event_type": "domain",
+       "value": "bet365.com",
+       "category": "LOTBA Oficial",
+       "action": "block",
+       "event_time": "2026-10-23T22:59:08.374Z",
+       "alert_generated": true
+     }
+   }
   ```
 
 #### B. Consultar Eventos (Tutor)
@@ -304,19 +284,17 @@ Permite al tutor consultar el historial de eventos con opción a filtrado por di
   "count": 1,
   "events": [
       {
-        "id": "4b19d686-9d1d-44d0-abf1-267d528a73ff",
-        "id_device": "8bd693c0-1b9a-4b07-a059-72986a29b594",
-        "alias_name": "Ana",
-        "os_model": "Galaxy s10",
-        "event_type": "lotba",
-        "url": "https://bet365.com",
-        "detail": {
-          "action": "Bloqueo Automático",
-          "category": "Apuestas Online"
-        },
-        "event_time": "2026-10-19T23:42:44.626Z",
-        "es_critico": true
-      }
+         "id": "17eaf8bf-a03b-440d-bbe2-cb0784f2be38",
+         "id_device": "132ccd04-277f-4702-b349-72794d20cdf2",
+         "alias_name": "Ana",
+         "os_model": "Android 13",
+         "event_type": "domain",
+         "value": "bet365.com",
+         "category": "LOTBA Oficial",
+         "action": "block",
+         "event_time": "2026-10-23T22:59:08.374Z",
+         "es_critico": true
+       }
     ]
   }
   ```
@@ -331,25 +309,18 @@ Obtiene las alertas críticas que requieren atención prioritaria.
   {
     "count": 1,
     "alerts": [
-      {
-        "alert_id": "4c411db8-e867-473f-8f5d-c53742eeaa2f",
-        "severity": "critical",
-        "message": "🚨 Alerta de Apuestas en Ana",
-        "read": false,
-        "alert_time": "2026-10-19T23:42:44.626Z",
-        "event_id": "4b19d686-9d1d-44d0-abf1-267d528a73ff",
-        "event_type": "lotba",
-        "url": "https://bet365.com",
-        "detail": {
-          "action": "Bloqueo Automático",
-          "category": "Apuestas Online"
-        },
-        "event_time": "2026-10-19T23:42:44.626Z",
-        "device_id": "8bd693c0-1b9a-4b07-a059-72986a29b594",
-        "alias_name": "Ana",
-        "device_uuid": "android-device-pairing-12345"
-      }
-    ]
+       {
+         "id": "8bcb9638-6082-4ab2-9642-fd4564ea238b",
+         "id_event": "17eaf8bf-a03b-440d-bbe2-cb0784f2be38",
+         "event_type": "domain",
+         "value": "bet365.com",
+         "device_name": "Ana",
+         "severity": "critical",
+         "message": "Infracción detectada (domain) en bet365.com para el dispositivo Ana",
+         "read": false,
+         "alert_time": "2026-10-23T22:59:08.374Z"
+       }
+     ]
   }
   ```
 
@@ -361,6 +332,7 @@ Listas globales de dominios y palabras clave administradas por el sistema.
 
 #### A. Sincronización de System Blocklist (Dispositivo Protegido)
 Sincroniza la lista global de categorías de bloqueo predefinidas.
+(El **checksum** es un algoritmo md5, ver sync.services.js)
 * **Método**: `GET`
 * **Ruta**: `localhost:3000/sync/system`
 * **Headers**: `Authorization: Bearer <DEVICE_TOKEN>`
@@ -372,13 +344,13 @@ Sincroniza la lista global de categorías de bloqueo predefinidas.
 * **Requiere actualización**:
   ```json
   {
-    "success": true,
-    "status": "RESET",
-    "current_version": 1,
-    "checksum": 2129,
-    "data": {
-      "total": 2129,
-      "lotba": [
+     "success": true,
+     "status": "RESET",
+     "current_version": 1,
+     "checksum": "6ba4cd8106123e8c5e607498b11eabe1",
+     "data": {
+       "total": 2129,
+       "domain": [
         "bplay.org",
         "betway.com",
         ...
@@ -396,12 +368,12 @@ Sincroniza la lista global de categorías de bloqueo predefinidas.
   **Está al día**:
   ```json
   {
-    "success": true,
-    "status": "UP_TO_DATE",
-    "current_version": 1,
-    "checksum": 2129,
-    "syncedAt": "2026-10-19T23:54:30.031Z"
-  }
+     "success": true,
+     "status": "UP_TO_DATE",
+     "current_version": 1,
+     "checksum": "6ba4cd8106123e8c5e607498b11eabe1",
+     "syncedAt": "2026-10-23T23:02:09.403Z"
+   }
   ```
 
 ---
@@ -421,7 +393,7 @@ Agrega o modifica una regla personalizada. Se dispara notificación Push silenci
 * **Body (JSON)**:
   ```json
   {
-    "domain": "instagram.com",
+    "value": "instagram.com",
     "rule_type": "domain"
   }
   ```
@@ -429,16 +401,16 @@ Agrega o modifica una regla personalizada. Se dispara notificación Push silenci
 * **Respuesta Exitosa (200 / 201)**:
   ```json
   {
-    "success": true,
-    "message": "Regla agregada o actualizada correctamente",
-    "data": {
-      "id": "3ae7debb-3fe6-43b8-ac94-774aa460eb88",
-      "domain": "instagram.com",
-      "rule_type": "domain",
-      "creation_time": "2026-10-20T00:08:00.154Z"
-    },
-    "notifiedDevicesCount": 1
-  }
+     "success": true,
+     "message": "Regla agregada o actualizada correctamente",
+     "data": {
+       "id": "c097d78f-09f2-44dd-a31e-ce95b4de2e7e",
+       "value": "http://instagram.com",
+       "rule_type": "domain",
+       "creation_time": "2026-10-23T23:08:06.104Z"
+     },
+     "notifiedDevicesCount": 1
+   }
   ```
 
 #### B. Obtener Reglas Personalizadas del Tutor (Tutor)
@@ -462,6 +434,7 @@ Agrega o modifica una regla personalizada. Se dispara notificación Push silenci
 
 #### C. Sincronización de Custom Blocklist (Dispositivo Protegido)
 Sincroniza las reglas personalizadas activas del tutor asociado al dispositivo.
+(Acá el **checksum** también es resultado de un algoritmo md5, ver sync.services.js)
 * **Método**: `GET`
 * **Ruta**: `localhost:3000/sync/custom/device`
 * **Headers**: `Authorization: Bearer <DEVICE_TOKEN>`
@@ -476,34 +449,34 @@ Sincroniza las reglas personalizadas activas del tutor asociado al dispositivo.
   **1. Requiere actualización (Estado `RESET`):**
   ```json
   {
-    "success": true,
-    "data": {
-      "status": "RESET",
-      "current_timestamp": 1792454880154,
-      "checksum": 1,
-      "data": {
-        "total": 1,
-        "domain": [
-          "instagram.com"
-        ],
-        "keyword": [],
-        "syncedAt": "2026-10-20T00:11:20.744Z"
-      }
-    }
-  }
+     "success": true,
+     "data": {
+       "status": "RESET",
+       "current_timestamp": 1792797782838,
+       "checksum": "38c54b3905da654071a415d62454d7dd",
+       "data": {
+         "total": 1,
+         "domain": [
+           "instagram.com"
+         ],
+         "keyword": [],
+         "syncedAt": "2026-10-23T23:28:25.151Z"
+       }
+     }
+   }
   ```
 
   **2. Dispositivo al día (Estado `UP_TO_DATE`):**
   ```json
   {
-    "success": true,
-    "data": {
-      "status": "UP_TO_DATE",
-      "current_timestamp": 1792454880154,
-      "checksum": 1,
-      "syncedAt": "2026-10-20T00:12:05.000Z"
-    }
-  }
+     "success": true,
+     "data": {
+       "status": "UP_TO_DATE",
+       "current_timestamp": 1792797782838,
+       "checksum": "38c54b3905da654071a415d62454d7dd",
+       "syncedAt": "2026-10-23T23:29:48.506Z"
+     }
+   }
 
 ---
 
