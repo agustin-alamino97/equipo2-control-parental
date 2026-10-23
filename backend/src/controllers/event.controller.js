@@ -11,10 +11,7 @@ const { reportEventSchema } = require('../schemas/event.schema');
  */
 const recibirEvento = async (req, res) => {
   try {
-    // Valida eventos individuales o batches (listados) mediante Zod
     const validatedData = reportEventSchema.parse(req.body);
-    
-    // Inyectamos el id / device_uuid del dispositivo validado por el token
     const authenticatedDevice = req.device;
 
     const eventDataWithDevice = Array.isArray(validatedData)
@@ -27,7 +24,7 @@ const recibirEvento = async (req, res) => {
       message: Array.isArray(result) 
         ? `${result.length} eventos registrados con éxito` 
         : 'Evento registrado con éxito',
-      events: result
+      event: result 
     });
   } catch (error) {
     if (error.name === 'ZodError') {

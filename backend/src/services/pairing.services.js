@@ -15,7 +15,7 @@ const db = require('../config/db');
 const generatePairingCode = async (userId) => {
   const plainCode = Math.floor(100000 + Math.random() * 900000).toString();
   const codeHash = await bcrypt.hash(plainCode, 10);
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // Expiración: 15 minutos
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // Expiración: 10 minutos
 
   const result = await db.query(
     `INSERT INTO pairing_codes (id_user, code_hash, expires_at)
@@ -47,7 +47,7 @@ const consumePairingCode = async ({ code, device_uuid, alias_name, birth_date, g
   try {
     await client.query('BEGIN');
 
-    // 1. Consultar todos los códigos activos no consumidos y dentro del rango de tiempo válido
+    // 1. Consultar códigos activos (sin bloquear tablas, permitiendo total concurrencia entre familias)
     const activeCodesResult = await client.query(
       `SELECT * FROM pairing_codes 
        WHERE used = false AND expires_at > NOW()`
@@ -57,7 +57,7 @@ const consumePairingCode = async ({ code, device_uuid, alias_name, birth_date, g
       throw new Error('INVALID_OR_EXPIRED_CODE');
     }
 
-    // 2. Comparar la clave ingresada contra los hashes de los códigos activos
+    // 2. Comparar la clave ingresada contra los hashes en memoria (Node.js)
     let validPairingRecord = null;
     for (const record of activeCodesResult.rows) {
       const isMatch = await bcrypt.compare(code, record.code_hash);
@@ -71,11 +71,20 @@ const consumePairingCode = async ({ code, device_uuid, alias_name, birth_date, g
       throw new Error('INVALID_OR_EXPIRED_CODE');
     }
 
-    // 3. Marcar el código de emparejamiento como consumido (used = true)
-    await client.query(
-      `UPDATE pairing_codes SET used = true WHERE id = $1`,
+    // 3. ACTUALIZACIÓN ATÓMICA CONDICIONADA
+    // Intentamos marcar como usado SOLO SI nadie más lo consumió en este microsegundo.
+    const updateResult = await client.query(
+      `UPDATE pairing_codes 
+       SET used = true 
+       WHERE id = $1 AND used = false 
+       RETURNING *`,
       [validPairingRecord.id]
     );
+
+    // Si no retorna filas, significa que hubo una colisión concurrente y otro request ya lo consumió
+    if (updateResult.rows.length === 0) {
+      throw new Error('INVALID_OR_EXPIRED_CODE');
+    }
 
     // 4. Generar Credencial Revocable (Device Token)
     const deviceToken = `dev_ak_${crypto.randomBytes(32).toString('hex')}`;

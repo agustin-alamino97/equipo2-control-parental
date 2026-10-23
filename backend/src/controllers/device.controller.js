@@ -1,4 +1,4 @@
-const deviceService = require('../services/device.service');
+const deviceService = require('../services/device.services');
 
 // ============================================================================
 // CONTROLADOR DE GESTIÓN DE DISPOSITIVOS

@@ -66,6 +66,8 @@ class NotificationService {
       throw error;
     }
   }
+
+  
 }
 
 module.exports = new NotificationService();

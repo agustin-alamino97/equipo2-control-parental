@@ -1,21 +1,20 @@
 const { z } = require('zod');
 
 const EVENT_TYPES = [
-  'blocked_access',
+  'domain',
+  'keyword',
+  'regex',
   'uninstall_attempt',
   'app_install_attempt',
   'os_permission_change',
-  'lotba',
-  'custom',
-  'score_exceeded'
+  'score_exceeded',
+  'custom'
 ];
 
 const singleEventSchema = z.object({
-  device_uuid: z.string({ message: 'El device_uuid es obligatorio' }).min(1, { message: 'El device_uuid no puede estar vacío' }),
-  event_type: z.enum(EVENT_TYPES, { message: 'Tipo de evento no válido' }),
-  url: z.string().nullable().optional(),
-  detail: z.record(z.any()).optional().default({}), 
-  is_sensitive: z.boolean().optional().default(false),
+  device_uuid: z.string().min(1, "El device_uuid es obligatorio"),
+  event_type: z.enum(EVENT_TYPES),
+  value: z.string().min(1, "El valor es obligatorio"),
   event_time: z.string().optional() // Acepta el string ISO enviado por el cliente
 });
 
