@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # BA Protege+
 Proyecto de InnovaLab para desarrollar una aplicación de control parental.
 
@@ -9,3 +10,7 @@ Estamos organizando el equipo, definiendo el alcance y planificando los primeros
 
 ## Equipo
 Desarrollado por **InnovaLab**.
+=======
+# equipo2-control-parental
+Aplicación de Control Parental y Bloqueo de Sitios de Apuestas (LOTBA).
+>>>>>>> 01a8dfe468f92f4e510f772dac75390c97b3f9e0
