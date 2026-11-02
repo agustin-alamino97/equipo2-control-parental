@@ -14,3 +14,14 @@ Desarrollado por **InnovaLab**.
 # equipo2-control-parental
 Aplicación de Control Parental y Bloqueo de Sitios de Apuestas (LOTBA).
 >>>>>>> 01a8dfe468f92f4e510f772dac75390c97b3f9e0
+
+Backend — desde la carpeta raíz del proyecto:
+Set-Location 'C:\Users\usuario\.inovalabs\protege-mas-backend'
+node src/index.js
+
+Frontend — desde la carpeta mobile:
+Set-Location 'C:\Users\usuario\.inovalabs\protege-mas-backend\mobile'
+$env:EXPO_PUBLIC_API_URL = 'http://localhost:3000'
+npx expo start --web
+
+La interfaz queda en http://localhost:8081 y el backend en http://localhost:3000. Para revisar los tipos del frontend, también ejecuté npm run typecheck desde la carpeta mobile
