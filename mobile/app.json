@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "BA Protege+",
+    "slug": "protege-mas-mobile",
+    "version": "1.0.0",
+    "scheme": "protegemas",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite",
+      "expo-router",
+      "expo-asset"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.innovalab.protegemas",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.innovalab.protegemas",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
