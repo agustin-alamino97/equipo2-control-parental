@@ -8,17 +8,15 @@ const { normalizeValue } = require('../utils/normalizeDomains');
 
 /**
  * Evalúa si un evento registrado se considera crítico para la vista del tutor.
- * @param {string} eventType - Tipo de evento ('domain', 'uninstall_attempt', etc.)
- * @param {string|null} actionSlug - Acción asociada ('block', 'alert', 'allow', etc.)
+ * @param {string} eventType Tipo de evento ('domain', 'uninstall_attempt', etc.)
+ * @param {string|null} actionSlug Acción asociada ('block', 'alert', 'allow', etc.)
  * @returns {boolean} True si el evento es de carácter crítico.
  */
 const esCritico = (eventType, actionSlug = null) => {
-  // 1. Si la regla aplicada derivó en un bloqueo, siempre es crítico
   if (actionSlug === 'block') {
     return true;
   }
 
-  // 2. Si es un evento de seguridad/telemetría del dispositivo
   const eventosSeguridadCriticos = [
     'uninstall_attempt',
     'app_install_attempt',
@@ -31,7 +29,7 @@ const esCritico = (eventType, actionSlug = null) => {
 
 /**
  * Determina el nivel de severidad asignado para la tabla 'alerts'.
- * @param {string} tipoEvento - Tipo de evento registrado.
+ * @param {string} tipoEvento Tipo de evento registrado.
  * @returns {'critical' | 'warning' | 'info'} Nivel de severidad para el ENUM de BD.
  */
 const obtenerSeveridad = (tipoEvento) => {
@@ -49,17 +47,18 @@ const obtenerSeveridad = (tipoEvento) => {
 
 /**
  * Construye los textos descriptivos para las notificaciones y mensajes de alerta.
- * @param {string} tipoEvento - Identificador del evento.
- * @param {string} aliasDispositivo - Nombre descriptivo del dispositivo del menor.
- * @param {string|null} url - Dirección web asociada (si aplica).
+ * @param {string} tipoEvento Identificador del evento.
+ * @param {string} aliasDispositivo Nombre descriptivo del dispositivo del menor.
+ * @param {string|null} valorAsociado Dirección web o valor asociado (si aplica).
  * @returns {{title: string, body: string}}
  */
-const construirMensajeNotificacion = (tipoEvento, aliasDispositivo, url) => {
+const construirMensajeNotificacion = (tipoEvento, aliasDispositivo, valorAsociado) => {
   switch (tipoEvento) {
     case 'lotba':
+    case 'domain':
       return {
         title: `🚨 Alerta de Apuestas en ${aliasDispositivo}`,
-        body: `Se detectó e interrumpió un intento de acceso a sitio de apuestas${url ? `: ${url}` : '.'}`
+        body: `Se detectó e interrumpió un intento de acceso a sitio restringido${valorAsociado ? `: ${valorAsociado}` : '.'}`
       };
     case 'uninstall_attempt':
       return {
@@ -81,15 +80,14 @@ const construirMensajeNotificacion = (tipoEvento, aliasDispositivo, url) => {
 
 /**
  * Consulta tokens Push activos del tutor y despacha notificaciones asincrónicas.
- * @param {Object} evento - Objeto de evento registrado en BD.
- * @param {string} deviceId - UUID interno del dispositivo en la base de datos.
+ * @param {Object} evento Objeto de evento registrado en BD.
+ * @param {string} deviceId UUID interno del dispositivo en la base de datos.
  */
 const procesarAlertaSiCorresponde = async (evento, deviceId) => {
   if (!esCritico(evento.event_type)) {
     return null;
   }
 
-  // Obtener push_tokens activos del tutor asociado al dispositivo
   const query = `
     SELECT us.push_token, d.alias_name
     FROM devices d
@@ -106,9 +104,8 @@ const procesarAlertaSiCorresponde = async (evento, deviceId) => {
   }
 
   const aliasDispositivo = result.rows[0].alias_name || 'Dispositivo Protegido';
-  const { title, body } = construirMensajeNotificacion(evento.event_type, aliasDispositivo, evento.url);
+  const { title, body } = construirMensajeNotificacion(evento.event_type, aliasDispositivo, evento.value);
 
-  // Enviar push a cada sesión activa
   const notificacionesEnviadas = [];
   for (const row of result.rows) {
     const response = await notificationService.enviarNotificacion(row.push_token, {
@@ -131,10 +128,6 @@ const procesarAlertaSiCorresponde = async (evento, deviceId) => {
 // REGISTRO Y PERSISTENCIA DE EVENTOS
 // ============================================================================
 
-/**
- * Procesa y registra un evento individual de forma idempotente.
- * @param {Object} eventData - Datos del evento enviados por el cliente.
- */
 const createSingleEvent = async (eventData) => {
   const { device_uuid, event_type, value, event_time, client_event_id } = eventData;
   const client = await db.connect();
@@ -159,7 +152,7 @@ const createSingleEvent = async (eventData) => {
     let categoryId = null;
     let actionId = null;
 
-    // 3. Determinar si el evento requiere búsqueda en blocklists o es de sistema/seguridad
+    // 3. Determinar si el evento requiere búsqueda en blocklists
     const requiresBlocklistCheck = ['domain', 'keyword', 'regex'].includes(event_type);
 
     if (requiresBlocklistCheck) {
@@ -206,8 +199,6 @@ const createSingleEvent = async (eventData) => {
       createdEvent = eventResult.rows[0];
       isNewEvent = true;
     } else {
-      // Si ya existía (por un reintento del móvil), lo recuperamos de la BD 
-      // para responder con éxito sin duplicar registros ni alertas.
       const existingEventRes = await client.query(
         'SELECT * FROM protection_events WHERE id_device = $1 AND client_event_id = $2',
         [device.id, client_event_id]
@@ -215,7 +206,7 @@ const createSingleEvent = async (eventData) => {
       createdEvent = existingEventRes.rows[0];
     }
 
-    // 5. Gestión de Alertas (Solo si es un evento nuevo para evitar duplicar alertas en reintentos)
+    // 5. Gestión de Alertas
     let createdAlert = null;
     let severity = 'info';
     let message = '';
@@ -256,7 +247,7 @@ const createSingleEvent = async (eventData) => {
       }
     }
 
-    // 6. Obtener nombres legibles para la respuesta utilizando los IDs del evento
+    // 6. Obtener nombres legibles para la respuesta
     let categoryName = null;
     let actionSlug = null;
 
@@ -270,10 +261,8 @@ const createSingleEvent = async (eventData) => {
       actionSlug = actRes.rows[0]?.slug || null;
     }
 
-    // Confirmamos la transacción atómica completa
     await client.query('COMMIT');
 
-    // Despacho asincrónico de notificaciones Push solo si se generó una alerta nueva
     if (createdAlert) {
       try {
         procesarAlertaSiCorresponde(createdEvent, device.id).catch(err => {
@@ -284,7 +273,6 @@ const createSingleEvent = async (eventData) => {
       }
     }
 
-    // Retornamos estructura limpia. Si era duplicado, alert_generated será false pero responderá con éxito.
     return {
       id: createdEvent.id,
       event_type: createdEvent.event_type,
@@ -303,10 +291,6 @@ const createSingleEvent = async (eventData) => {
   }
 };
 
-/**
- * Punto de entrada público para procesar un evento individual o un lote (array).
- * @param {Object|Array} data - Objeto o arreglo de objetos validados por Zod.
- */
 const registrarEvento = async (data) => {
   if (Array.isArray(data)) {
     const results = [];
@@ -324,11 +308,6 @@ const registrarEvento = async (data) => {
 // CONSULTAS PARA LA APLICACIÓN DEL TUTOR
 // ============================================================================
 
-/**
- * Obtiene el historial de eventos pertenecientes a los dispositivos de un tutor.
- * @param {string} userId - UUID del tutor autenticado.
- * @param {string|null} filterDeviceId - ID de dispositivo opcional para filtrar.
- */
 const getEventsByTutor = async (userId, filterDeviceId = null) => {
   let query = `
     SELECT 
@@ -361,22 +340,17 @@ const getEventsByTutor = async (userId, filterDeviceId = null) => {
 
   return result.rows.map(event => ({
     ...event,
-    es_critico: esCritico(event.event_type, event.action) // <-- Pasamos el slug de la acción ('block', etc.)
+    es_critico: esCritico(event.event_type, event.action)
   }));
 };
 
-/**
- * Obtiene el listado de alertas generadas para la app del tutor.
- * @param {string} userId - UUID del tutor.
- * @param {Object} opciones - Filtros de consulta (soloNoLeidas, limite).
- */
 const getAlertsForTutor = async (userId, { soloNoLeidas, limite = 20 } = {}) => {
   let query = `
     SELECT 
       a.id,
       a.id_event,
       pe.event_type,
-      pe.value, -- <-- Asegúrate de usar value en lugar de url
+      pe.value,
       d.alias_name AS device_name,
       a.severity,
       a.message,
@@ -386,7 +360,6 @@ const getAlertsForTutor = async (userId, { soloNoLeidas, limite = 20 } = {}) => 
     INNER JOIN protection_events pe ON a.id_event = pe.id
     INNER JOIN devices d ON pe.id_device = d.id
     WHERE d.id_user = $1
-    -- ... tus filtros y ordenamientos
   `;
 
   const queryParams = [userId];
@@ -403,17 +376,12 @@ const getAlertsForTutor = async (userId, { soloNoLeidas, limite = 20 } = {}) => 
   return rows;
 };
 
-/**
- * Actualiza el estado de una alerta a leída asegurando propiedad del tutor.
- * @param {string} alertId - ID de la alerta a actualizar.
- * @param {string} userId - ID del tutor en sesión.
- */
 const markAlertAsRead = async (alertId, userId) => {
   const query = `
     UPDATE alerts a
     SET read = true
     FROM protection_events pe
-    JOIN devices d ON pe.idsw_device = d.id
+    JOIN devices d ON pe.id_device = d.id -- <--- CORREGIDO: id_device en lugar de idsw_device
     WHERE a.id_event = pe.id 
       AND a.id = $1 
       AND d.id_user = $2

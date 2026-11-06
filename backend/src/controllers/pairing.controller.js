@@ -37,7 +37,7 @@ const consumeCode = async (req, res) => {
     return res.status(200).json({
       message: 'Dispositivo vinculado con éxito',
       device,
-      deviceToken
+      device_token: deviceToken
     });
   } catch (error) {
     if (error.name === 'ZodError') {

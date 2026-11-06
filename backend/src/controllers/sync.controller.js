@@ -23,7 +23,7 @@ class SyncController {
   }
 
   /**
-   * GET /api/v1/sync/custom/user
+   * GET {{base_url}}/sync/custom/user
    * Obtiene la lista actual de reglas personalizadas activas para el tutor.
    */
   async getCustomRulesForUser(req, res, next) {
@@ -43,7 +43,7 @@ class SyncController {
   }
 
   /**
-   * POST /api/v1/sync/custom/user
+   * POST {{base_url}}/sync/custom/user
    * Agrega o reactiva una regla personalizada del tutor y dispara el Silent Push.
    */
   async addCustomRuleForUser(req, res, next) {
@@ -64,7 +64,50 @@ class SyncController {
   }
 
   /**
-   * GET /api/v1/sync/custom/device
+   * PUT {{base_url}}/sync/custom/user/:id
+   * Actualiza una regla personalizada existente del tutor.
+   */
+  async updateCustomRuleForUser(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const ruleId = req.params.id;
+      const { value, rule_type } = req.body;
+
+      const result = await syncService.updateCustomRuleForUser({
+        userId,
+        ruleId,
+        value,
+        ruleType: rule_type
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE {{base_url}}/sync/custom/user/:id
+   * Realiza un soft delete de una regla personalizada del tutor.
+   */
+  async deleteCustomRuleForUser(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const ruleId = req.params.id;
+
+      const result = await syncService.deleteCustomRuleForUser({
+        userId,
+        ruleId
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET {{base_url}}/sync/custom/device
    * Sincronización de reglas personalizadas para el dispositivo protegido (Doble verificación + 7 días).
    */
   async getCustomRulesForDevice(req, res, next) {

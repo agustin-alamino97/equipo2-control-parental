@@ -9,7 +9,7 @@ const deviceAuthMiddleware = require('../middlewares/deviceAuthMiddleware');
 // ============================================================================
 
 // Recepción de eventos desde la app del menor (Público, validado por device_uuid)
-router.post('/', deviceAuthMiddleware, eventController.recibirEvento);
+router.post('/', deviceAuthMiddleware(['linked']), eventController.recibirEvento);
 
 // Consulta de historial de eventos por el tutor (Protegido por JWT)
 router.get('/', authenticateToken, eventController.getEvents);

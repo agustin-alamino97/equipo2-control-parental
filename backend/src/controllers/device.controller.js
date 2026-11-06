@@ -4,10 +4,6 @@ const deviceService = require('../services/device.services');
 // CONTROLADOR DE GESTIÓN DE DISPOSITIVOS
 // ============================================================================
 
-/**
- * Consulta la lista de dispositivos asignados al tutor en sesión.
- * @route GET /api/devices
- */
 const getDevices = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -19,33 +15,40 @@ const getDevices = async (req, res) => {
   }
 };
 
-/**
- * Desvincula un dispositivo del tutor (revoca credencial y cambia estado a no vinculado).
- */
-const unlinkDevice = async (req, res) => {
+const requestUnlink = async (req, res, next) => {
   try {
-    const { id } = req.id || req.params; // Tomamos el id de los parámetros de la ruta
-    const userId = req.user.id;         // El ID del tutor obtenido del token JWT
+    const { deviceId } = req.params;
+    const userId = req.user.id;
 
-    const unlinkedDevice = await deviceService.unlinkDevice(id, userId);
-
+    const result = await deviceService.initiateUnlink(deviceId, userId);
     return res.status(200).json({
-      message: 'Dispositivo desvinculado y credencial revocada con éxito',
-      device: unlinkedDevice
+      success: true,
+      message: 'Proceso de desvinculación iniciado.',
+      data: result
     });
   } catch (error) {
-    if (error.message === 'DEVICE_NOT_FOUND_OR_ALREADY_UNLINKED') {
-      return res.status(404).json({ 
-        error: 'El dispositivo no existe, no pertenece a este tutor o ya se encuentra desvinculado' 
-      });
-    }
+    next(error);
+  }
+};
 
-    console.error('Error al desvincular dispositivo:', error);
-    return res.status(500).json({ error: 'Error interno del servidor' });
+const confirmDeviceUnlink = async (req, res, next) => {
+  try {
+    // Obtenemos el ID del dispositivo autenticado de forma segura mediante el middleware
+    const deviceId = req.device.id;
+
+    const result = await deviceService.confirmUnlink(deviceId);
+    return res.status(200).json({
+      success: true,
+      message: 'Dispositivo desvinculado exitosamente.',
+      data: result
+    });
+  } catch (error) {
+    next(error);
   }
 };
 
 module.exports = {
   getDevices,
-  unlinkDevice
+  requestUnlink,
+  confirmDeviceUnlink
 };

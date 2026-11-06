@@ -1,10 +1,6 @@
 const db = require('../config/db');
 const notificationService = require('./notifications/notification.services');
 
-// ============================================================================
-// SERVICIOS DE GESTIÓN DE DISPOSITIVOS
-// ============================================================================
-  
 const getDevicesByUser = async (userId) => {
   const result = await db.query(
     `SELECT 
@@ -13,7 +9,7 @@ const getDevicesByUser = async (userId) => {
        alias_name,
        os_model,
        protection_status,
-       linked,
+       status,
        last_ping,
        creation_time
      FROM devices 
@@ -25,32 +21,26 @@ const getDevicesByUser = async (userId) => {
 };
 
 /**
- * Desvincula un dispositivo del tutor (revoca credenciales y apaga el flag de vinculación).
+ * 1. El tutor inicia la desvinculación: pasa a 'pending' y envía push silencioso.
  */
-const unlinkDevice = async (deviceId, userId) => {
-  // 1. Desvinculamos en la BD y recuperamos el push_token que tenía asignado
+const initiateUnlink = async (deviceId, userId) => {
   const result = await db.query(
     `UPDATE devices 
-      SET linked = false,
-          protection_status = false,
-          device_token = NULL, 
-          push_token = NULL 
-      WHERE id = $1 AND id_user = $2 AND linked = true
-      RETURNING id, alias_name, linked, protection_status, push_token`,
+       SET status = 'pending'
+     WHERE id = $1 AND id_user = $2 AND status = 'linked'
+     RETURNING id, alias_name, status, push_token`,
     [deviceId, userId]
   );
 
   if (result.rows.length === 0) {
-    throw new Error('DEVICE_NOT_FOUND_OR_ALREADY_UNLINKED');
+    throw new Error('DEVICE_NOT_FOUND_OR_NOT_LINKED');
   }
 
   const updatedDevice = result.rows[0];
-  const oldPushToken = updatedDevice.push_token;
 
-  // 2. Si el dispositivo tenía un push token, disparamos el push silencioso
-  if (oldPushToken) {
+  if (updatedDevice.push_token) {
     await notificationService.sendSilentPush({
-      pushTokens: oldPushToken,
+      pushTokens: updatedDevice.push_token,
       payload: {
         action: 'FORCE_UNLINK',
         device_id: updatedDevice.id
@@ -58,16 +48,40 @@ const unlinkDevice = async (deviceId, userId) => {
     });
   }
 
-  // 3. Retornamos los datos limpios al controlador
   return {
     id: updatedDevice.id,
     alias_name: updatedDevice.alias_name,
-    linked: updatedDevice.linked,
-    protection_status: updatedDevice.protection_status
+    status: updatedDevice.status
+  };
+};
+
+/**
+ * 2. La app del protegido confirma que ejecutó la baja localmente.
+ */
+const confirmUnlink = async (deviceId) => {
+  const result = await db.query(
+    `UPDATE devices 
+       SET status = 'unlinked',
+           protection_status = false,
+           device_token = NULL,
+           push_token = NULL 
+     WHERE id = $1 AND status = 'pending'
+     RETURNING id, status`,
+    [deviceId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error('DEVICE_NOT_FOUND_OR_NOT_IN_PENDING');
+  }
+
+  return {
+    id: result.rows[0].id,
+    status: result.rows[0].status
   };
 };
 
 module.exports = {
   getDevicesByUser,
-  unlinkDevice,
+  initiateUnlink,
+  confirmUnlink
 };

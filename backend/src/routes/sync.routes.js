@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const syncController = require('../controllers/sync.controller');
-const authenticateToken = require('../middlewares/authMiddleware');
+const authMiddleware = require('../middlewares/authMiddleware');
 const deviceAuthMiddleware = require('../middlewares/deviceAuthMiddleware');
 
 // =========================================================================
@@ -18,14 +18,25 @@ router.get('/system', syncController.getSystemSync);
  * @route   GET localhost:3000/sync/custom/user
  * @desc    Obtiene las reglas personalizadas activas para el panel del tutor
  */
-router.get('/custom/user', authenticateToken, syncController.getCustomRulesForUser);
+router.get('/custom/user', authMiddleware, syncController.getCustomRulesForUser);
 
 /**
  * @route   POST localhost:3000/sync/custom/user
  * @desc    Agrega o reactiva una regla personalizada y dispara el Silent Push
  */
-router.post('/custom/user', authenticateToken, syncController.addCustomRuleForUser);
+router.post('/custom/user', authMiddleware, syncController.addCustomRuleForUser);
 
+/**
+ * @route   PUT /sync/custom/user/:id
+ * @desc    Actualiza una regla personalizada existente del tutor
+ */
+router.put('/custom/user/:id', authMiddleware, syncController.updateCustomRuleForUser);
+
+/**
+ * @route   DELETE /sync/custom/user/:id
+ * @desc    Elimina (soft delete) una regla personalizada del tutor
+ */
+router.delete('/custom/user/:id', authMiddleware, syncController.deleteCustomRuleForUser);
 
 // =========================================================================
 // 3. RUTAS DE CUSTOM BLOCKLIST (DISPOSITIVO PROTEGIDO) - Doble validación
@@ -35,7 +46,7 @@ router.post('/custom/user', authenticateToken, syncController.addCustomRuleForUs
  * @route   GET localhost:3000/sync/custom/device
  * @desc    Sincronización de reglas personalizadas para el dispositivo (Checksum + Timestamp + 7 días)
  */
-router.get('/custom/device', deviceAuthMiddleware, syncController.getCustomRulesForDevice);
+router.get('/custom/device', deviceAuthMiddleware(['linked']), syncController.getCustomRulesForDevice);
 
 
 module.exports = router;

@@ -1,19 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const deviceController = require('../controllers/device.controller');
-const authenticateToken = require('../middlewares/authMiddleware');
+const authMiddleware = require('../middlewares/authMiddleware');
+const deviceAuthMiddleware = require('../middlewares/deviceAuthMiddleware');
 
 // ============================================================================
-// RUTAS DE GESTIÓN DE DISPOSITIVOS (PROTEGIDAS)
+// RUTAS DE GESTIÓN DE DISPOSITIVOS
 // ============================================================================
 
-// Aplicar middleware de autenticación a todas las rutas del módulo
-router.use(authenticateToken);
+// 1. Obtener el listado de dispositivos (Exclusivo Tutor)
+router.get('/', authMiddleware, deviceController.getDevices);
 
-// Obtener el listado de dispositivos pertenecientes al tutor autenticado
-router.get('/', deviceController.getDevices);
+// 2. El tutor solicita desvincular un dispositivo (Exclusivo Tutor)
+router.post('/:deviceId/unlink', authMiddleware, deviceController.requestUnlink);
 
-// Desvincular un dispositivo específico por su ID
-router.patch('/:id/unlink', authenticateToken, deviceController.unlinkDevice);
+// 3. La app del protegido confirma la desvinculación (Exclusivo Dispositivo - Permite estado 'pending')
+router.post('/confirm-unlink', deviceAuthMiddleware(['pending']), deviceController.confirmDeviceUnlink);
 
 module.exports = router;
