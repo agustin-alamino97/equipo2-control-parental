@@ -22,30 +22,40 @@ const getDevices = async (req, res) => {
 /**
  * Desvincula un dispositivo del tutor (revoca credencial y cambia estado a no vinculado).
  */
-const unlinkDevice = async (req, res) => {
+const requestUnlink = async (req, res, next) => {
   try {
-    const { id } = req.id || req.params; // Tomamos el id de los parámetros de la ruta
-    const userId = req.user.id;         // El ID del tutor obtenido del token JWT
+    const { deviceId } = req.params;
+    const userId = req.user.id; // Asumiendo que viene del authMiddleware del tutor
 
-    const unlinkedDevice = await deviceService.unlinkDevice(id, userId);
-
+    const result = await deviceService.initiateUnlink(deviceId, userId);
     return res.status(200).json({
-      message: 'Dispositivo desvinculado y credencial revocada con éxito',
-      device: unlinkedDevice
+      success: true,
+      message: 'Proceso de desvinculación iniciado.',
+      data: result
     });
   } catch (error) {
-    if (error.message === 'DEVICE_NOT_FOUND_OR_ALREADY_UNLINKED') {
-      return res.status(404).json({ 
-        error: 'El dispositivo no existe, no pertenece a este tutor o ya se encuentra desvinculado' 
-      });
-    }
+    next(error);
+  }
+};
 
-    console.error('Error al desvincular dispositivo:', error);
-    return res.status(500).json({ error: 'Error interno del servidor' });
+const confirmDeviceUnlink = async (req, res, next) => {
+  try {
+    // El deviceId se extrae del token del dispositivo autenticado, no de la URL
+    const deviceId = req.device.id; // (Ajusta según cómo guardes el device en tu authMiddleware)
+
+    const result = await deviceService.confirmUnlink(deviceId);
+    return res.status(200).json({
+      success: true,
+      message: 'Dispositivo desvinculado exitosamente.',
+      data: result
+    });
+  } catch (error) {
+    next(error);
   }
 };
 
 module.exports = {
   getDevices,
-  unlinkDevice
+  requestUnlink,
+  confirmDeviceUnlink
 };
