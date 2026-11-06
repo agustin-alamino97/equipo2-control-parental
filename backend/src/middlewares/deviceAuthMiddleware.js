@@ -2,9 +2,9 @@ const db = require('../config/db');
 
 /**
  * Middleware para validar la credencial revocable enviada desde el dispositivo protegido.
- * Realiza validación cruzada entre el 'device_token' (header) y el 'device_uuid' (body/payload).
+ * @param {Array<string>} allowedStatuses - Estados permitidos para acceder a la ruta (por defecto ['linked']).
  */
-const deviceAuthMiddleware = async (req, res, next) => {
+const deviceAuthMiddleware = (allowedStatuses = ['linked']) => async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -13,14 +13,12 @@ const deviceAuthMiddleware = async (req, res, next) => {
 
   const deviceToken = authHeader.split(' ')[1];
 
-// Extracción orientada al verbo HTTP
+  // Extracción orientada al verbo HTTP
   let payloadUuid;
 
   if (req.method === 'GET') {
-    // Si es GET, lo busca en los parámetros de la URL
     payloadUuid = req.query?.device_uuid;
   } else {
-    // Si es POST (o cualquier otro método), lo busca en el body
     if (Array.isArray(req.body)) {
       payloadUuid = req.body[0]?.device_uuid;
     } else {
@@ -46,9 +44,15 @@ const deviceAuthMiddleware = async (req, res, next) => {
 
     const device = result.rows[0];
 
-    // 2. Verificar que el dispositivo no esté desvinculado
-    if (device.status === 'unlinked') {
-      return res.status(403).json({ error: 'El dispositivo ha sido desvinculado o revocado' });
+    // 2. Validar contra los estados permitidos para esta ruta específica
+    if (!allowedStatuses.includes(device.status)) {
+      if (device.status === 'unlinked') {
+        return res.status(403).json({ error: 'El dispositivo ha sido desvinculado o revocado' });
+      }
+      if (device.status === 'pending') {
+        return res.status(403).json({ error: 'El dispositivo se encuentra en proceso de desvinculación pendiente' });
+      }
+      return res.status(403).json({ error: 'Estado de dispositivo no autorizado para esta operación' });
     }
 
     // 3. VALIDACIÓN CRUZADA: El device_uuid del token debe coincidir con el device_uuid enviado
@@ -63,7 +67,7 @@ const deviceAuthMiddleware = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Error en deviceAuthMiddleware:', error);
-    return res.status(500).json({ error: 'Error interno de autenticación de dispositivo' });
+    return res.status(403).json({ error: 'Token inválido o expirado' });
   }
 };
 

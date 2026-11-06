@@ -1,10 +1,6 @@
 const db = require('../config/db');
 const notificationService = require('./notifications/notification.services');
 
-// ============================================================================
-// SERVICIOS DE GESTIÓN DE DISPOSITIVOS
-// ============================================================================
-  
 const getDevicesByUser = async (userId) => {
   const result = await db.query(
     `SELECT 
@@ -42,7 +38,6 @@ const initiateUnlink = async (deviceId, userId) => {
 
   const updatedDevice = result.rows[0];
 
-  // Disparamos el push silencioso usando el token que todavía conservamos
   if (updatedDevice.push_token) {
     await notificationService.sendSilentPush({
       pushTokens: updatedDevice.push_token,

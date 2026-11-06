@@ -15,9 +15,8 @@ class MockNotificationProvider {
    * Simula el envío de notificaciones silenciosas a dispositivos protegidos.
    */
   async sendSilentPush({ pushTokens, payload }) {
-    // Normalizamos para asegurar que siempre sea un array, venga un string o una lista
     const tokensArray = Array.isArray(pushTokens) ? pushTokens : [pushTokens];
-    
+
     console.log('\n================================--------------------');
     console.log('🔕 [MOCK PUSH] Disparando Silent Push Notification');
     console.log(`📱 Destinatarios (${tokensArray.length} dispositivos):`, pushTokens);
@@ -26,7 +25,7 @@ class MockNotificationProvider {
   
     return {
       success: true,
-      deliveredCount: pushTokens.length,
+      deliveredCount: tokensArray.length,
       mock: true
     };
   }
