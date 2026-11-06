@@ -186,7 +186,7 @@ El dispositivo protegido envía el código generado para vincularse y obtener su
       "device_uuid": "android-device-pairing-12345",
       "os_model": "Galaxy s10",
       "protection_status": true,
-      "linked": true,
+      "status": 'linked',
       "push_token": "pushToken_abc23454321",
       "last_ping": "2026-10-19T23:39:08.849Z",
       "creation_time": "2026-10-19T12:38:23.445Z",
@@ -210,7 +210,7 @@ Lista todos los dispositivos asociados a la cuenta del tutor.
          "alias_name": "Ana",
          "os_model": "Android 13",
          "protection_status": true,
-         "linked": true,
+         "status": 'linked',
          "last_ping": "2026-10-23T22:49:29.108Z",
          "creation_time": "2026-10-23T22:49:29.108Z"
        }
@@ -219,19 +219,41 @@ Lista todos los dispositivos asociados a la cuenta del tutor.
   ```
 
 #### D. Desvincular Dispositivo (Tutor)
-Desvincula un dispositivo de la cuenta del tutor (`linked = false`).
-* **Método**: `PATCH`
-* **Ruta**: `localhost:3000/devices/:id/unlink`
+Este método requiere dos pasos: Primero el tutor inicia la desvinculación y el dispositivo pasa de "status" = 'linked' a "status" = 'pending' y envía un push silencioso al dispositivo para inicializar el protocolo de desvinculación.
+* **Método**: `POST`
+* **Ruta**: `localhost:3000/devices/:deviceId/unlink`
 * **Headers**: `Authorization: Bearer <JWT_DEL_TUTOR>`
 * **Respuesta Exitosa (200)**:
   ```json
   {
-     "message": "Dispositivo desvinculado y credencial revocada con éxito",
-     "device": {
-       "id": "8bd693c0-1b9a-4b07-a059-72986a29b594",
+     "success": true,
+     "message": "Proceso de desvinculación iniciado.",
+     "data": {
+       "id": "85baa0da-9eea-4ea8-8925-d55c056d8d30",
        "alias_name": "Ana",
-       "linked": false,
-       "protection_status": false
+       "status": "pending"
+     }
+   }
+  ```
+
+  Segundo, el dispositivo tras recibir el push silencioso y completar el protocolo de desvinculación envía un POST a backend para completar la desvinculación, pasar de "status" = 'pending' a "status" = 'unlinked'.
+  * **Método**: `POST`
+* **Ruta**: `localhost:3000/devices/confirm-unlink`
+* **Headers**: `Authorization: Bearer <DEVICE_TOKEN>`
+* * **Body (JSON)**:
+  ```json
+  {
+    "device_uuid": "android-device-pairing-12345" 
+   }
+  ```
+* **Respuesta Exitosa (200)**:
+  ```json
+  {
+     "success": true,
+     "message": "Dispositivo desvinculado exitosamente.",
+     "data": {
+       "id": "85baa0da-9eea-4ea8-8925-d55c056d8d30",
+       "status": "unlinked"
      }
    }
   ```
@@ -335,7 +357,6 @@ Sincroniza la lista global de categorías de bloqueo predefinidas.
 (El **checksum** es un algoritmo md5, ver sync.services.js)
 * **Método**: `GET`
 * **Ruta**: `localhost:3000/sync/system`
-* **Headers**: `Authorization: Bearer <DEVICE_TOKEN>`
 * **Query Parameters**:
   * `version` 
   * `checksum`
@@ -382,7 +403,7 @@ Sincroniza la lista global de categorías de bloqueo predefinidas.
 
 Listas de dominios y palabras clave configuradas individualmente por cada tutor.
 
-#### A. Crear / Actualizar Regla Personalizada (Tutor)
+#### A. Crear Regla Personalizada (Tutor)
 Agrega o modifica una regla personalizada. Se dispara notificación Push silenciosa a los dispositivos vinculados.
 * **Método**: `POST`
 * **Ruta**: `localhost:3000/sync/custom/user`
@@ -432,7 +453,53 @@ Agrega o modifica una regla personalizada. Se dispara notificación Push silenci
   }
   ```
 
-#### C. Sincronización de Custom Blocklist (Dispositivo Protegido)
+#### C. Actualizar Regla Personalizada
+Modifica una regla de la lista personalizada.
+* **Método**: `PUT`
+* **Ruta**: `localhost:3000/sync/custom/user/:id`
+* **Headers**: 
+  * `Authorization: Bearer <JWT_DEL_TUTOR>`
+* **Query 
+* **Body (JSON)**:
+  ```json
+  {
+     "value": "http://youtube.com",
+     "rule_type": "domain"
+   }
+  ```
+  *(Tipos permitidos para `rule_type`: `"domain"` o `"keyword"`)*
+* **Respuesta Exitosa (200 / 201)**:
+  ```json
+  {
+     "success": true,
+     "message": "Regla actualizada correctamente",
+     "data": {
+       "id": "a8992b37-10b7-47f7-acea-08311e781362",
+       "value": "youtube.com",
+       "rule_type": "domain",
+       "creation_time": "2026-11-06T17:03:54.719Z"
+     }
+   }
+  ```
+
+#### D. Eliminar Regla Personalizada
+Elimina una regla de la lista personalizada.
+* **Método**: `DELETE`
+* **Ruta**: `localhost:3000/sync/custom/user/:id`
+* **Headers**: 
+  * `Authorization: Bearer <JWT_DEL_TUTOR>`
+* **Respuesta Exitosa (200 / 201)**:
+  ```json
+     {
+     "success": true,
+     "message": "Regla eliminada correctamente",
+     "data": {
+       "id": "d7827bf0-3186-48df-bc2f-38d3824a0ff8"
+     }
+   }
+  ```
+
+#### E. Sincronización de Custom Blocklist (Dispositivo Protegido)
 Sincroniza las reglas personalizadas activas del tutor asociado al dispositivo.
 (Acá el **checksum** también es resultado de un algoritmo md5, ver sync.services.js)
 * **Método**: `GET`
