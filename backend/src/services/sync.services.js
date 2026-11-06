@@ -111,28 +111,37 @@ class SyncService {
 
     const cleanvalue = normalizeValue(ruleType, value);
 
-    const query = `
-      INSERT INTO custom_blocklist (id_user, value, rule_type, active, creation_time)
-      VALUES ($1, $2, $3, true, NOW())
-      ON CONFLICT (id_user, value) 
-      DO UPDATE SET 
-        active = true, 
-        rule_type = EXCLUDED.rule_type, 
-        creation_time = NOW()
-      RETURNING id, value, rule_type, creation_time;
-    `;
+    try {
+      const query = `
+        INSERT INTO custom_blocklist (id_user, value, rule_type, active, creation_time)
+        VALUES ($1, $2, $3, true, NOW())
+        ON CONFLICT (id_user, value) 
+        DO UPDATE SET 
+          active = true, 
+          rule_type = EXCLUDED.rule_type, 
+          creation_time = NOW()
+        RETURNING id, value, rule_type, creation_time;
+      `;
 
-    const result = await db.query(query, [userId, cleanvalue, ruleType]);
-    const createdRule = result.rows[0];
+      const result = await db.query(query, [userId, cleanvalue, ruleType]);
+      const createdRule = result.rows[0];
 
-    // Disparar Silent Push
-    await this._notifyDevices(userId, createdRule.creation_time);
+      // Disparar Silent Push
+      await this._notifyDevices(userId, createdRule.creation_time);
 
-    return {
-      success: true,
-      message: 'Regla agregada o actualizada correctamente',
-      data: createdRule
-    };
+      return {
+        success: true,
+        message: 'Regla agregada o actualizada correctamente',
+        data: createdRule
+      };
+    } catch (dbError) {
+      if (dbError.code === '23505') {
+        const error = new Error('Ya existe una regla registrada con ese mismo valor para este usuario.');
+        error.statusCode = 400;
+        throw error;
+      }
+      throw dbError;
+    }
   }
 
   /**
@@ -149,35 +158,46 @@ class SyncService {
 
     const cleanValue = value ? normalizeValue(ruleType || 'domain', value) : null;
 
-    // Actualizamos asegurando que la regla pertenezca al tutor autenticado
-    const query = `
-      UPDATE custom_blocklist
-      SET 
-        value = COALESCE($1, value),
-        rule_type = COALESCE($2, rule_type),
-        creation_time = NOW()
-      WHERE id = $3 AND id_user = $4 AND active = true
-      RETURNING id, value, rule_type, creation_time;
-    `;
+    try {
+      // Actualizamos asegurando que la regla pertenezca al tutor autenticado
+      const query = `
+        UPDATE custom_blocklist
+        SET 
+          value = COALESCE($1, value),
+          rule_type = COALESCE($2, rule_type),
+          creation_time = NOW()
+        WHERE id = $3 AND id_user = $4 AND active = true
+        RETURNING id, value, rule_type, creation_time;
+      `;
 
-    const result = await db.query(query, [cleanValue, ruleType, ruleId, userId]);
+      const result = await db.query(query, [cleanValue, ruleType, ruleId, userId]);
 
-    if (result.rows.length === 0) {
-      const error = new Error('Regla no encontrada o no pertenece al usuario.');
-      error.statusCode = 404;
-      throw error;
+      if (result.rows.length === 0) {
+        const error = new Error('Regla no encontrada o no pertenece al usuario.');
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const updatedRule = result.rows[0];
+
+      // Disparar Silent Push
+      await this._notifyDevices(userId, updatedRule.creation_time);
+
+      return {
+        success: true,
+        message: 'Regla actualizada correctamente',
+        data: updatedRule
+      };
+
+    } catch (dbError) {
+      // Código PostgreSQL para violación de unique constraint
+      if (dbError.code === '23505') {
+        const error = new Error('Ya existe otra regla registrada con ese mismo valor para este usuario.');
+        error.statusCode = 400; // Bad Request controlado
+        throw error;
+      }
+      throw dbError; // Si es otro error de base de datos, lo dejamos propagar
     }
-
-    const updatedRule = result.rows[0];
-
-    // Disparar Silent Push
-    await this._notifyDevices(userId, updatedRule.creation_time);
-
-    return {
-      success: true,
-      message: 'Regla actualizada correctamente',
-      data: updatedRule
-    };
   }
 
   /**

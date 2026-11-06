@@ -59,7 +59,10 @@ class SyncController {
 
       return res.status(201).json(result);
     } catch (error) {
-      next(error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
     }
   }
 
@@ -82,7 +85,10 @@ class SyncController {
 
       return res.status(200).json(result);
     } catch (error) {
-      next(error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
     }
   }
 
@@ -102,7 +108,10 @@ class SyncController {
 
       return res.status(200).json(result);
     } catch (error) {
-      next(error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
     }
   }
 
