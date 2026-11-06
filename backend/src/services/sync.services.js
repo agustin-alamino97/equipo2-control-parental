@@ -2,18 +2,21 @@ const db = require('../config/db');
 const notificationService = require('./notifications/notification.services');
 const { normalizeValue } = require('../utils/normalizeDomains');
 
+// Constante unificada para el checksum de listas vacías
+const EMPTY_CHECKSUM = 'd41d8cd98f00b204e9800998ecf8427e';
+
 class SyncService {
   async getSystemRules({ clientVersion, clientChecksum }) {
   // 1. Obtenemos el conteo, la versión máxima y el hash de contenido en una sola query optimizada
   // Usamos md5() que viene nativo en PostgreSQL (no requiere extensiones como pgcrypto)
   const metaQuery = await db.query(`
     SELECT 
-      COUNT(*)::int as total, 
-      COALESCE(MAX(version_id), MAX(id), 0) as max_version,
-      md5(string_agg(value, ',' ORDER BY id ASC)) as content_hash
-    FROM system_blocklist 
-    WHERE active = true
-  `);
+        COUNT(*)::int as total, 
+        COALESCE(MAX(version_id), MAX(id), 0) as max_version,
+        COALESCE(md5(string_agg(value, ',' ORDER BY id ASC)), $1) as content_hash
+      FROM system_blocklist 
+      WHERE active = true
+    `, [EMPTY_CHECKSUM]);
 
   const { total, max_version, content_hash } = metaQuery.rows[0];
 
@@ -157,62 +160,101 @@ class SyncService {
    * la doble verificación por timestamp, checksum y regla de seguridad de 7 días.
    */
   async getCustomRulesForDevice({ userId, clientTimestamp, clientChecksum }) {
-  const metaQuery = await db.query(
-    `SELECT 
-       MAX(creation_time) as last_created,
-       COALESCE(md5(string_agg(value, ',' ORDER BY id ASC)), 'd41d8cd98f00b204e9800998ecf8427e') as content_hash
-     FROM custom_blocklist 
-     WHERE id_user = $1 AND active = true`,
-    [userId]
-  );
+    // 1. PRE-CHEOUEO: Verificamos rápidamente si el tutor tiene reglas activas
+    const countQuery = await db.query(
+      `SELECT COUNT(*)::int as total FROM custom_blocklist WHERE id_user = $1 AND active = true`,
+      [userId]
+    );
+    
+    const totalRules = countQuery.rows[0].total;
 
-  const { last_created, content_hash } = metaQuery.rows[0];
-  const serverTimestamp = last_created ? new Date(last_created).getTime() : 0;
-  const serverChecksum = content_hash;
+    // Si la lista está totalmente vacía, respondemos de inmediato sin tocar string_agg
+    if (totalRules === 0) {
+      const serverTimestamp = 0;
+      const serverChecksum = EMPTY_CHECKSUM;
 
-  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const isOlderThanSevenDays = clientTimestamp ? (now - Number(clientTimestamp)) > SEVEN_DAYS_MS : true;
+      // Evaluamos si el cliente ya sabía que estaba vacío
+      const isUpToDate = Number(clientTimestamp) === serverTimestamp && clientChecksum === serverChecksum;
 
-  const isUpToDate = 
-    !isOlderThanSevenDays &&
-    Number(clientTimestamp) === serverTimestamp &&
-    clientChecksum === serverChecksum;
+      if (isUpToDate) {
+        return {
+          status: 'UP_TO_DATE',
+          current_timestamp: serverTimestamp,
+          checksum: serverChecksum,
+          syncedAt: new Date().toISOString()
+        };
+      }
 
-  if (isUpToDate) {
+      return {
+        status: 'RESET',
+        current_timestamp: serverTimestamp,
+        checksum: serverChecksum,
+        data: {
+          total: 0,
+          domain: [],
+          keyword: [],
+          syncedAt: new Date().toISOString()
+        }
+      };
+    } 
+    
+    // 2. Si hay reglas activas, obtenemos el timestamp y checksum de la lista actual
+    const metaQuery = await db.query(
+      `SELECT 
+         MAX(creation_time) as last_created,
+         COALESCE(md5(string_agg(value, ',' ORDER BY id ASC)), $1) as content_hash
+       FROM custom_blocklist 
+       WHERE id_user = $2 AND active = true`,
+      [EMPTY_CHECKSUM, userId]
+    );
+
+    const { last_created, content_hash } = metaQuery.rows[0];
+    const serverTimestamp = last_created ? new Date(last_created).getTime() : 0;
+    const serverChecksum = content_hash;
+
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const isOlderThanSevenDays = clientTimestamp ? (now - Number(clientTimestamp)) > SEVEN_DAYS_MS : true;
+
+    const isUpToDate = 
+      !isOlderThanSevenDays &&
+      Number(clientTimestamp) === serverTimestamp &&
+      clientChecksum === serverChecksum;
+
+    if (isUpToDate) {
+      return {
+        status: 'UP_TO_DATE',
+        current_timestamp: serverTimestamp,
+        checksum: serverChecksum,
+        syncedAt: new Date().toISOString()
+      };
+    }
+
+    const rulesResult = await db.query(
+      `SELECT value, rule_type 
+        FROM custom_blocklist 
+        WHERE id_user = $1 AND active = true`,
+      [userId]
+    );
+
+    const rules = rulesResult.rows;
+    
+    // Estandarizado a 'domain'
+    const domain = rules.filter(item => item.rule_type === 'domain').map(item => item.value);
+    const keyword = rules.filter(item => item.rule_type === 'keyword').map(item => item.value);
+
     return {
-      status: 'UP_TO_DATE',
+      status: 'RESET',
       current_timestamp: serverTimestamp,
       checksum: serverChecksum,
-      syncedAt: new Date().toISOString()
+      data: {
+        total: rules.length,
+        domain, 
+        keyword,
+        syncedAt: new Date().toISOString()
+      }
     };
   }
-
-  const rulesResult = await db.query(
-    `SELECT value, rule_type 
-     FROM custom_blocklist 
-     WHERE id_user = $1 AND active = true`,
-    [userId]
-  );
-
-  const rules = rulesResult.rows;
-  
-  // Estandarizado a 'domain'
-  const domain = rules.filter(item => item.rule_type === 'domain').map(item => item.value);
-  const keyword = rules.filter(item => item.rule_type === 'keyword').map(item => item.value);
-
-  return {
-    status: 'RESET',
-    current_timestamp: serverTimestamp,
-    checksum: serverChecksum,
-    data: {
-      total: rules.length,
-      domain, 
-      keyword,
-      syncedAt: new Date().toISOString()
-    }
-  };
-}
 }
 
 module.exports = new SyncService();
