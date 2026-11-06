@@ -68,7 +68,7 @@ class SyncService {
    */
   async getCustomRulesForUser({ userId }) {
     const rulesResult = await db.query(
-      `SELECT value, rule_type, creation_time 
+      `SELECT id, value, rule_type, creation_time 
        FROM custom_blocklist 
        WHERE id_user = $1 AND active = true
        ORDER BY creation_time DESC`,
@@ -77,8 +77,14 @@ class SyncService {
 
     const rules = rulesResult.rows;
 
-    const domain = rules.filter(item => item.rule_type === 'domain').map(item => item.value);
-    const keyword = rules.filter(item => item.rule_type === 'keyword').map(item => item.value);
+    // Estructuramos por tipo pero incluyendo el id y el valor para la tabla del tutor
+    const domain = rules
+      .filter(item => item.rule_type === 'domain')
+      .map(item => ({ id: item.id, value: item.value }));
+      
+    const keyword = rules
+      .filter(item => item.rule_type === 'keyword')
+      .map(item => ({ id: item.id, value: item.value }));
 
     const lastCreation = rules.length > 0 ? rules[0].creation_time : null;
 
@@ -95,64 +101,148 @@ class SyncService {
    * y dispara un Silent Push a todos sus dispositivos vinculados.
    */
   async addCustomRuleForUser({ userId, value, ruleType }) {
-  // Estandarizado a 'domain' en lugar de 'value'
-  const ALLOWED_TYPES = ['domain', 'keyword']; 
+    const ALLOWED_TYPES = ['domain', 'keyword']; 
 
-  if (!ALLOWED_TYPES.includes(ruleType)) {
-    const error = new Error(`El tipo de regla '${ruleType}' no está permitido.`);
-    error.statusCode = 400;
-    throw error;
+    if (!ALLOWED_TYPES.includes(ruleType)) {
+      const error = new Error(`El tipo de regla '${ruleType}' no está permitido.`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const cleanvalue = normalizeValue(ruleType, value);
+
+    const query = `
+      INSERT INTO custom_blocklist (id_user, value, rule_type, active, creation_time)
+      VALUES ($1, $2, $3, true, NOW())
+      ON CONFLICT (id_user, value) 
+      DO UPDATE SET 
+        active = true, 
+        rule_type = EXCLUDED.rule_type, 
+        creation_time = NOW()
+      RETURNING id, value, rule_type, creation_time;
+    `;
+
+    const result = await db.query(query, [userId, cleanvalue, ruleType]);
+    const createdRule = result.rows[0];
+
+    // Disparar Silent Push
+    await this._notifyDevices(userId, createdRule.creation_time);
+
+    return {
+      success: true,
+      message: 'Regla agregada o actualizada correctamente',
+      data: createdRule
+    };
   }
 
-  const cleanvalue = normalizeValue(ruleType, value);
+  /**
+   * Actualiza una regla personalizada existente por su ID.
+   */
+  async updateCustomRuleForUser({ userId, ruleId, value, ruleType }) {
+    const ALLOWED_TYPES = ['domain', 'keyword']; 
 
-  // UPSERT usando id_user y active
-  const query = `
-    INSERT INTO custom_blocklist (id_user, value, rule_type, active, creation_time)
-    VALUES ($1, $2, $3, true, NOW())
-    ON CONFLICT (id_user, value) 
-    DO UPDATE SET 
-      active = true, 
-      rule_type = EXCLUDED.rule_type, 
-      creation_time = NOW()
-    RETURNING id, value, rule_type, creation_time;
-  `;
+    if (ruleType && !ALLOWED_TYPES.includes(ruleType)) {
+      const error = new Error(`El tipo de regla '${ruleType}' no está permitido.`);
+      error.statusCode = 400;
+      throw error;
+    }
 
-  const result = await db.query(query, [userId, cleanvalue, ruleType]);
-  const createdRule = result.rows[0];
+    const cleanValue = value ? normalizeValue(ruleType || 'domain', value) : null;
 
-  // Buscar tokens usando id_user y linked
-  const devicesQuery = await db.query(
-    `SELECT push_token, device_uuid 
-     FROM devices 
-     WHERE id_user = $1 AND linked = true AND push_token IS NOT NULL`,
-    [userId]
-  );
+    // Actualizamos asegurando que la regla pertenezca al tutor autenticado
+    const query = `
+      UPDATE custom_blocklist
+      SET 
+        value = COALESCE($1, value),
+        rule_type = COALESCE($2, rule_type),
+        creation_time = NOW()
+      WHERE id = $3 AND id_user = $4 AND active = true
+      RETURNING id, value, rule_type, creation_time;
+    `;
 
-  const pushTokens = devicesQuery.rows.map(d => d.push_token);
+    const result = await db.query(query, [cleanValue, ruleType, ruleId, userId]);
 
-  if (pushTokens.length > 0) {
+    if (result.rows.length === 0) {
+      const error = new Error('Regla no encontrada o no pertenece al usuario.');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const updatedRule = result.rows[0];
+
+    // Disparar Silent Push
+    await this._notifyDevices(userId, updatedRule.creation_time);
+
+    return {
+      success: true,
+      message: 'Regla actualizada correctamente',
+      data: updatedRule
+    };
+  }
+
+  /**
+   * Elimina (soft delete) una regla personalizada por su ID.
+   */
+  async deleteCustomRuleForUser({ userId, ruleId }) {
+    // Soft delete: cambiamos active a false y actualizamos el creation_time para invalidar cachés
+    const query = `
+      UPDATE custom_blocklist
+      SET 
+        active = false,
+        creation_time = NOW()
+      WHERE id = $1 AND id_user = $2 AND active = true
+      RETURNING id, creation_time;
+    `;
+
+    const result = await db.query(query, [ruleId, userId]);
+
+    if (result.rows.length === 0) {
+      const error = new Error('Regla no encontrada o ya se encuentra inactiva.');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const deletedRule = result.rows[0];
+
+    // Disparar Silent Push
+    await this._notifyDevices(userId, deletedRule.creation_time);
+
+    return {
+      success: true,
+      message: 'Regla eliminada correctamente',
+      data: { id: deletedRule.id }
+    };
+  }
+
+  /**
+   * Método auxiliar privado para notificar vía Silent Push a los dispositivos vinculados.
+   */
+  async _notifyDevices(userId, timestampRef) {
     try {
-      await notificationService.sendSilentPush({
-        pushTokens,
-        payload: {
-          action: 'RELOAD_CUSTOM_RULES',
-          tutorUserId: userId,
-          timestamp: new Date(createdRule.creation_time).getTime()
-        }
-      });
+      const devicesQuery = await db.query(
+        `SELECT push_token 
+         FROM devices 
+         WHERE id_user = $1 AND status = 'linked' AND push_token IS NOT NULL`,
+        [userId]
+      );
+
+      const pushTokens = devicesQuery.rows.map(d => d.push_token);
+
+      if (pushTokens.length > 0) {
+        await notificationService.sendSilentPush({
+          pushTokens,
+          payload: {
+            action: 'RELOAD_CUSTOM_RULES',
+            tutorUserId: userId,
+            timestamp: new Date(timestampRef).getTime()
+          }
+        });
+      }
     } catch (pushError) {
       console.error('[SYNC SERVICE] Error no bloqueante al enviar Silent Push:', pushError.message);
     }
   }
 
-  return {
-      success: true,
-      message: 'Regla agregada o actualizada correctamente',
-      data: createdRule,
-      notifiedDevicesCount: pushTokens.length
-    };
-  }
 
   /**
    * Sincronización de reglas personalizadas para dispositivos protegidos.

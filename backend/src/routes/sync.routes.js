@@ -26,6 +26,17 @@ router.get('/custom/user', authMiddleware, syncController.getCustomRulesForUser)
  */
 router.post('/custom/user', authMiddleware, syncController.addCustomRuleForUser);
 
+/**
+ * @route   PUT /sync/custom/user/:id
+ * @desc    Actualiza una regla personalizada existente del tutor
+ */
+router.put('/custom/user/:id', authMiddleware, syncController.updateCustomRuleForUser);
+
+/**
+ * @route   DELETE /sync/custom/user/:id
+ * @desc    Elimina (soft delete) una regla personalizada del tutor
+ */
+router.delete('/custom/user/:id', authMiddleware, syncController.deleteCustomRuleForUser);
 
 // =========================================================================
 // 3. RUTAS DE CUSTOM BLOCKLIST (DISPOSITIVO PROTEGIDO) - Doble validación
