@@ -10,10 +10,8 @@ const validators = {
 };
 
 const apiKeyMiddleware = async (req, res, next) => {
-  // Eligir manualmente qué estrategia quieres que esté activa hoy:
-  //const validatorType = 'static'; 
-   const validatorType = 'hmac';
-  // const validatorType = 'play-integrity';
+  // Leemos la estrategia activa desde las variables de entorno (por defecto 'static')
+  const validatorType = process.env.API_VALIDATOR_TYPE || 'static';
   
   const selectedValidator = validators[validatorType];
 

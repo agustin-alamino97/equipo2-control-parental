@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const config = require('./config/config');
 const { initScheduledJobs } = require('./utils/cleanup');
@@ -24,7 +26,7 @@ app.use('/sync', syncRoutes);
 app.use('/test', testRoutes);
 
 // Arrancar servidor y tareas en segundo plano
-const PORT = config.port || 3000;
+const PORT = process.env.PORT;
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en el puerto ${PORT}`);
