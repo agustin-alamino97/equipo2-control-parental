@@ -4,7 +4,7 @@ const expoProvider = require('./providers/expo.provider');
 class NotificationService {
   constructor() {
     // Lee la variable de entorno o usa 'mock' por defecto
-    const providerName = (process.env.NOTIFICATION_PROVIDER || 'mock').toLowerCase();
+    const providerName = (process.env.NOTIFICATION_PROVIDER).toLowerCase();
 
     switch (providerName) {
       case 'expo':

@@ -11,7 +11,7 @@ const validators = {
 
 const apiKeyMiddleware = async (req, res, next) => {
   // Leemos la estrategia activa desde las variables de entorno (por defecto 'static')
-  const validatorType = process.env.API_VALIDATOR_TYPE || 'static';
+  const validatorType = (process.env.API_VALIDATOR_TYPE || 'static').toLowerCase;
   
   const selectedValidator = validators[validatorType];
 

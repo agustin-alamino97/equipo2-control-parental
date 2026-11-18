@@ -20,7 +20,7 @@ const esCritico = (eventType, actionSlug = null) => {
   const eventosSeguridadCriticos = [
     'uninstall_attempt',
     'app_install_attempt',
-    'score_exceeded',
+    'domain',
     'os_permission_change'
   ];
 
