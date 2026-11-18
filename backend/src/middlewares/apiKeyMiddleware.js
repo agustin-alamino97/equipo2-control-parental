@@ -1,22 +1,47 @@
 const { validateStaticApiKey } = require('./api-key-validators/staticValidator');
+const { validateHmac } = require('./api-key-validators/hmacValidator');
+const { validatePlayIntegrity } = require('./api-key-validators/playIntegrityValidator');
 
-const apiKeyMiddleware = (req, res, next) => {
-  // Puedes leer la API key del header (ej: x-api-key)
-  const validation = validateStaticApiKey(req);
+// Mapa de estrategias disponibles para alternar fácilmente
+const validators = {
+  static: validateStaticApiKey,
+  hmac: validateHmac,
+  'play-integrity': validatePlayIntegrity
+};
+
+const apiKeyMiddleware = async (req, res, next) => {
+  // Eligir manualmente qué estrategia quieres que esté activa hoy:
+  //const validatorType = 'static'; 
+   const validatorType = 'hmac';
+  // const validatorType = 'play-integrity';
   
-  // Definimos una clave esperada (idealmente vendría de process.env.API_KEY)
-  const validApiKey = process.env.API_KEY || 'secreto-super-seguro-123';
+  const selectedValidator = validators[validatorType];
 
-  if (!validation.isValid) {
-    return res.status(401).json({
+  if (!selectedValidator) {
+    return res.status(500).json({
       success: false,
-      message: validation.message
+      message: `La estrategia de validación '${validatorType}' no es válida o no está registrada.`
     });
   }
 
+  try {
+    // Soportamos validadores síncronos y asíncronos con await
+    const validation = await selectedValidator(req);
 
-  // Si todo está bien, continúa con la ejecución
-  next();
+    if (!validation.isValid) {
+      return res.status(401).json({
+        success: false,
+        message: validation.message
+      });
+    }
+
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `Error interno en el middleware de seguridad: ${error.message}`
+    });
+  }
 };
 
 module.exports = apiKeyMiddleware;
