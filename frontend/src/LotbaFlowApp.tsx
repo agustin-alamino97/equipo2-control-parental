@@ -1,5 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,7 +15,12 @@ import {
   type TextInputInstance,
   View,
 } from 'react-native';
-import { NavigationContainer, useNavigation, useRoute } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 import {
   createNativeStackNavigator,
   type NativeStackNavigationProp,
@@ -33,6 +41,7 @@ import {
   Mail,
   Pencil,
   RefreshCw,
+  Search,
   Shield,
   Smartphone,
   Tablet,
@@ -40,6 +49,9 @@ import {
 } from 'lucide-react-native';
 import LotbaBrandMark from './components/LotbaBrandMark';
 import OnboardingArtwork from './components/OnboardingArtwork';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import * as api from './services/api';
+import type { ApiAlert, ApiDevice, ApiEvent, ApiRule } from './services/api';
 
 type LotbaStackParamList = {
   Splash: undefined;
@@ -67,6 +79,8 @@ type LotbaStackParamList = {
   CustomList: undefined;
   Blacklist: undefined;
   Devices: undefined;
+  DeviceDetail: { device: ApiDevice };
+  Alerts: undefined;
   LinkDeviceGuide: undefined;
   ProtectedCode: undefined;
   ProtectedHome: undefined;
@@ -82,6 +96,7 @@ type ScreenProps<Route extends keyof LotbaStackParamList> =
   NativeStackScreenProps<LotbaStackParamList, Route>;
 
 const Stack = createNativeStackNavigator<LotbaStackParamList>();
+const lotbaLogo = require('../assets/logo blanco lotba_Mesa de trabajo 1 1.png');
 
 const C = {
   purple: '#342783',
@@ -109,6 +124,10 @@ const BACK_HIDDEN_ROUTES = new Set([
   'Recover',
   'EmailConfirmation',
   'RegistrationSuccess',
+  'BlockedSites',
+  'CustomList',
+  'Blacklist',
+  'Devices',
   'ResponsibleSetup',
   'DevicePermission',
   'VpnConsent',
@@ -125,11 +144,13 @@ function Page({
   children,
   bottom,
   scroll = true,
+  immersiveHeader = false,
 }: {
   title?: string;
   children: React.ReactNode;
   bottom?: React.ReactNode;
   scroll?: boolean;
+  immersiveHeader?: boolean;
 }) {
   const navigation = useNavigation();
   const routeName = useRoute().name;
@@ -137,26 +158,44 @@ function Page({
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeRoot}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.header}>
-        {showBack ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-            onPress={() => navigation.goBack()}
-            style={styles.headerBack}
-          >
-            <ArrowLeft color={C.white} size={22} />
-          </Pressable>
-        ) : (
+      {immersiveHeader ? (
+        <View style={styles.usageHeader}>
+          <View style={styles.usageBrand}>
+            <Text style={styles.usageBrandTitle}>BA Protege+</Text>
+            <Image
+              accessibilityLabel="Lotería de la Ciudad"
+              resizeMode="contain"
+              source={lotbaLogo}
+              style={styles.usageLotbaLogo}
+            />
+          </View>
+          {bottom}
+        </View>
+      ) : (
+        <View style={styles.header}>
+          {showBack ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Volver"
+              onPress={() => navigation.goBack()}
+              style={styles.headerBack}
+            >
+              <ArrowLeft color={C.white} size={22} />
+            </Pressable>
+          ) : (
+            <View style={styles.headerBack} />
+          )}
+          <Text style={styles.brandTitle}>BA Protege+</Text>
           <View style={styles.headerBack} />
-        )}
-        <Text style={styles.brandTitle}>BA Protege+</Text>
-        <View style={styles.headerBack} />
-      </View>
+        </View>
+      )}
       {scroll ? (
         <ScrollView
           style={styles.pageBody}
-          contentContainerStyle={styles.bodyContent}
+          contentContainerStyle={[
+            styles.bodyContent,
+            immersiveHeader && styles.immersiveBodyContent,
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -169,7 +208,7 @@ function Page({
           {children}
         </View>
       )}
-      {bottom}
+      {!immersiveHeader ? bottom : null}
     </SafeAreaView>
   );
 }
@@ -179,16 +218,19 @@ function Button({
   onPress,
   disabled = false,
   outline = false,
+  loading = false,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   outline?: boolean;
+  loading?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
+      disabled={disabled || loading}
       onPress={onPress}
       style={[
         styles.button,
@@ -196,11 +238,20 @@ function Button({
         disabled && styles.disabledButton,
       ]}
     >
-      <Text style={[styles.buttonText, outline && styles.outlineButtonText]}>
-        {label}
-      </Text>
+      {loading ? (
+        <ActivityIndicator color={outline ? C.purpleText : C.white} />
+      ) : (
+        <Text style={[styles.buttonText, outline && styles.outlineButtonText]}>
+          {label}
+        </Text>
+      )}
     </Pressable>
   );
+}
+
+function InlineError({ message }: { message: string | null }) {
+  if (!message) return null;
+  return <Text accessibilityRole="alert" style={styles.inlineError}>{message}</Text>;
 }
 
 function CheckOption({
@@ -301,11 +352,13 @@ function PinEntry({
   onChangeText,
   accessibilityLabel,
   masked = false,
+  length = 5,
 }: {
   value: string;
   onChangeText: (value: string) => void;
   accessibilityLabel: string;
   masked?: boolean;
+  length?: number;
 }) {
   const inputRef = useRef<TextInputInstance | null>(null);
   return (
@@ -315,7 +368,7 @@ function PinEntry({
       onPress={() => inputRef.current?.focus()}
       style={styles.pinRow}
     >
-      {Array.from({ length: 5 }, (_, index) => (
+      {Array.from({ length }, (_, index) => (
         <View key={index} style={styles.pinCell}>
           <Text style={styles.pinDigit}>
             {value[index] ? (masked ? '*' : value[index]) : ''}
@@ -326,7 +379,7 @@ function PinEntry({
         ref={inputRef}
         accessibilityLabel={accessibilityLabel}
         keyboardType="number-pad"
-        maxLength={5}
+        maxLength={length}
         onChangeText={text => onChangeText(text.replace(/\D/g, ''))}
         style={styles.pinInputOverlay}
         value={value}
@@ -395,16 +448,19 @@ function Tab({
 }
 
 function SplashScreen({ navigation }: ScreenProps<'Splash'>) {
+  const { isReady, storageError } = useAuth();
   useEffect(() => {
+    if (!isReady) return;
     const timer = setTimeout(() => navigation.replace('Onboarding1'), 900);
     return () => clearTimeout(timer);
-  }, [navigation]);
+  }, [isReady, navigation]);
 
   return (
     <SafeAreaView style={styles.splashRoot}>
       <StatusBar barStyle="light-content" />
       <LotbaBrandMark size={176} />
       <Text style={styles.splashText}>BA Protege+</Text>
+      {storageError ? <InlineError message={storageError} /> : null}
     </SafeAreaView>
   );
 }
@@ -436,25 +492,25 @@ function OnboardingScreen({
   step: 1 | 2 | 3 | 4 | 5;
 }) {
   const titles = [
-    'Navegación más segura para tus hijos',
+    'Navegación más segura para tus dispositivos',
     '1. Registrate',
     '2. Configurá el modo responsable',
-    '3. Instalá la aplicación en el dispositivo del menor',
+    '3. Instalá la aplicación en el dispositivo protegido',
     '4. Vinculá el dispositivo con la clave de acceso',
   ];
   const subtitles = [
     'Control parental para prevenir el acceso a sitios de apuestas ilegales y otros contenidos riesgosos.',
-    'Creá tu cuenta para empezar a proteger a tus hijos.',
-    'Elegí el modo responsable para gestionar la protección de tus hijos.',
-    'Descargá BA Protege+ en el dispositivo que usarán tus hijos.',
-    'Ingresá la clave para vincular el dispositivo del menor.',
+    'Creá tu cuenta para empezar a proteger tus dispositivos.',
+    'Elegí el modo responsable para gestionar los dispositivos vinculados.',
+    'Descargá BA Protege+ en el dispositivo que querés proteger.',
+    'Ingresá el código para vincular el dispositivo protegido.',
   ];
   const bullets = [
     [],
     ['Es rápido y seguro', 'Podés ser el responsable', 'Gestioná todos tus dispositivos.'],
     ['Activá el VPN y configurá tu celular', 'Bloqueá sitios de apuestas ilegales', 'Recibí alertas de actividad'],
     [],
-    ['Configurá el dispositivo del menor en Modo Protegido para que tu hijo no pueda desinstalar BA Protege+.'],
+    ['Configurá el dispositivo protegido en Modo Protegido para evitar desactivar BA Protege+.'],
   ];
   const next = () => {
     if (step === 1) navigation.navigate('Onboarding2');
@@ -473,6 +529,15 @@ function OnboardingScreen({
       >
         {step === 1 ? (
           <>
+            <View style={styles.onboardingLotbaLogo}>
+              <Image
+                accessible
+                accessibilityLabel="Logo de Lotería de la Ciudad"
+                resizeMode="contain"
+                source={lotbaLogo}
+                style={styles.onboardingLotbaImage}
+              />
+            </View>
             <Text style={styles.onboardingBrand}>BA Protege+</Text>
             <LotbaBrandMark size={168} />
           </>
@@ -543,16 +608,43 @@ function OnboardingBullet({ text }: { text: string }) {
 }
 
 function RegisterScreen({ navigation }: ScreenProps<'Register'>) {
+  const { setAuthSession } = useAuth();
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [accepted, setAccepted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const canContinue =
     name.trim().length > 0 &&
     surname.trim().length > 0 &&
     email.trim().length > 0 &&
     password.length > 0;
+  const submitRegistration = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const emailAddress = email.trim();
+      const registeredUser = await api.register({
+        name: name.trim(),
+        surname: surname.trim(),
+        email: emailAddress,
+        password,
+      });
+      const session = await api.login(emailAddress, password, registeredUser);
+      await setAuthSession(session);
+      navigation.navigate('EmailConfirmation', { email: emailAddress });
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo completar el registro.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <Page title="Creá tu cuenta">
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -575,13 +667,13 @@ function RegisterScreen({ navigation }: ScreenProps<'Register'>) {
           value={accepted}
           onChange={setAccepted}
         />
+        <InlineError message={error} />
         <View style={styles.formActions}>
           <Button
             label="Confirmar"
             disabled={!canContinue}
-            onPress={() =>
-              navigation.navigate('EmailConfirmation', { email: email.trim() })
-            }
+            loading={loading}
+            onPress={submitRegistration}
           />
           <Button
             label="Cancelar"
@@ -605,11 +697,11 @@ function EmailConfirmationScreen({
       <View style={styles.mailHero}>
         <Mail color={C.purple} size={28} strokeWidth={1.8} />
       </View>
-      <Text style={styles.mailTitle}>¡Revisá tu correo!</Text>
+      <Text style={styles.mailTitle}>Registro creado</Text>
       <Text style={styles.mailMessage}>
-        Te enviamos un mail para confirmar tu cuenta. Recordá revisar el spam o correo no deseado.
+        El registro se creó en el servidor. La API todavía no ofrece confirmación de correo; este paso es una simulación local.
       </Text>
-      <Text style={styles.pinLabel}>Ingresá el código que te enviamos</Text>
+      <Text style={styles.pinLabel}>Ingresá un código de prueba de cinco dígitos</Text>
       <PinEntry
         accessibilityLabel="Código de confirmación"
         value={code}
@@ -643,10 +735,30 @@ function RegistrationSuccessScreen({ navigation }: ScreenProps<'RegistrationSucc
 }
 
 function LoginScreen({ navigation }: ScreenProps<'Login'>) {
+  const { setAuthSession } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const canContinue = email.includes('@') && password.length > 0;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submitLogin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const session = await api.login(email.trim(), password);
+      await setAuthSession(session);
+      navigation.navigate('UsageMode');
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo iniciar sesión.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <Page title="Iniciar sesión">
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -674,11 +786,13 @@ function LoginScreen({ navigation }: ScreenProps<'Login'>) {
         >
           <Text style={styles.textLink}>¿Olvidaste tu contraseña?</Text>
         </Pressable>
+        <InlineError message={error} />
         <View style={styles.formActions}>
           <Button
             label="Iniciar sesión"
             disabled={!canContinue}
-            onPress={() => navigation.navigate('UsageMode')}
+            loading={loading}
+            onPress={submitLogin}
           />
           <Button
             label="Cancelar"
@@ -692,17 +806,17 @@ function LoginScreen({ navigation }: ScreenProps<'Login'>) {
 }
 
 function RecoverScreen({ navigation, route }: ScreenProps<'Recover'>) {
-  const email = route.params?.email || 'usuario@example.com';
+  const email = route.params?.email || '';
   return (
     <Page title="Recuperar contraseña">
       <View style={styles.mailHero}>
         <Mail color={C.purple} size={28} strokeWidth={1.8} />
       </View>
-      <Text style={styles.mailTitle}>¡Revisá tu correo!</Text>
+      <Text style={styles.mailTitle}>Recuperación no disponible</Text>
       <Text style={styles.mailMessage}>
-        Te enviamos un mail para recuperar tu contraseña. Recordá revisar el spam o correo no deseado.
+        La API integrada todavía no ofrece recuperación de contraseña. Volvé al inicio de sesión para continuar.
       </Text>
-      <Text style={styles.emailHint}>{email}</Text>
+      {email ? <Text style={styles.emailHint}>{email}</Text> : null}
       <Pressable
         accessibilityRole="button"
         onPress={() => navigation.navigate('Login')}
@@ -711,7 +825,10 @@ function RecoverScreen({ navigation, route }: ScreenProps<'Recover'>) {
         <Text style={styles.textLink}>¿Recordaste tu contraseña?</Text>
       </Pressable>
       <View style={styles.formActions}>
-        <Button label="Confirmar" onPress={() => navigation.navigate('Login')} />
+        <Button
+          label="Volver al inicio de sesión"
+          onPress={() => navigation.navigate('Login')}
+        />
       </View>
     </Page>
   );
@@ -721,6 +838,7 @@ function UsageModeScreen({ navigation }: ScreenProps<'UsageMode'>) {
   return (
     <Page
       title="Modo de uso"
+      immersiveHeader
       bottom={
         <BottomTabs
           active="home"
@@ -735,7 +853,7 @@ function UsageModeScreen({ navigation }: ScreenProps<'UsageMode'>) {
       </Text>
       <ModeTile
         title="Modo Responsable"
-        subtitle="Gestioná la protección de tus hijos."
+        subtitle="Gestioná la protección de los dispositivos vinculados."
         color={C.purple}
         icon={<Shield color={C.white} size={19} />}
         onPress={() => navigation.navigate('ResponsibleSetup')}
@@ -899,7 +1017,6 @@ function ResponsibleHomeScreen({ navigation }: ScreenProps<'ResponsibleHome'>) {
   return (
     <Page
       title="Modo Responsable"
-      scroll={false}
       bottom={
         <BottomTabs
           active="home"
@@ -936,6 +1053,17 @@ function ResponsibleHomeScreen({ navigation }: ScreenProps<'ResponsibleHome'>) {
   );
 }
 
+function getDeviceConnectionState(device: ApiDevice): string {
+  if (device.status === 'pending') return 'Actualización pendiente';
+  if (device.status !== 'linked') return 'Desconectado';
+  if (!device.last_ping) return 'Sin conexión registrada';
+  const lastPing = Date.parse(device.last_ping);
+  if (!Number.isFinite(lastPing) || Date.now() - lastPing > 5 * 60 * 1000) {
+    return 'Desconectado';
+  }
+  return 'Conectado';
+}
+
 function HomeCard({
   icon,
   title,
@@ -960,18 +1088,38 @@ function HomeCard({
         <Text style={styles.homeCardTitle}>{title}</Text>
         <Text style={styles.homeCardSubtitle}>{subtitle}</Text>
       </View>
-      <ChevronRight color={C.white} size={19} />
     </Pressable>
   );
 }
 
 function HistoryScreen({ navigation }: ScreenProps<'History'>) {
-  const entries = [
-    ['11-09-26', 'El dispositivo Celular de Cami intentó ingresar a www.aposta.com'],
-    ['27-10-26', 'El dispositivo Celular de Cami fue vinculado.'],
-    ['13-10-26', 'El dispositivo Notebook de mamá ha sido desvinculado.'],
-    ['22-09-26', 'El dispositivo Tablet de Nico intentó desinstalar la aplicación BA Protege+.'],
-  ];
+  const [events, setEvents] = useState<ApiEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.getEvents()
+      .then(items => {
+        if (active) setEvents(items);
+      })
+      .catch(requestError => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : 'No se pudo cargar el historial.'
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <Page
       title="Historial"
@@ -985,26 +1133,152 @@ function HistoryScreen({ navigation }: ScreenProps<'History'>) {
       }
     >
       <Text style={styles.centerSubtitle}>Registro de actividad reciente de los dispositivos protegidos.</Text>
+    {loading ? <ActivityIndicator color={C.purple} /> : null}
+    <InlineError message={error} />
       <View style={styles.historyList}>
-        {entries.map(([date, description], index) => (
-          <View key={date} style={styles.historyEntry}>
-            {index === 0 ? <View style={styles.unreadDot} /> : null}
-            <Text style={styles.historyDate}>{date}</Text>
-            <Text style={styles.historyText}>{description}</Text>
+      {events.map(event => (
+        <View key={event.id} style={styles.historyEntry}>
+          <Text style={styles.historyDate}>
+            {new Date(event.event_time).toLocaleDateString('es-AR')}
+          </Text>
+          <Text style={styles.historyText}>
+            {`El dispositivo ${event.alias_name || 'vinculado'} registró ${event.action || event.event_type}: ${event.value}`}
+          </Text>
           </View>
         ))}
       </View>
+    {!loading && events.length === 0 && !error ? (
+      <Text style={styles.paragraph}>Todavía no hay actividad registrada.</Text>
+    ) : null}
+    {error ? (
+      <Button
+        label="Reintentar"
+        outline
+        onPress={() => navigation.replace('History')}
+      />
+    ) : null}
+    </Page>
+  );
+}
+
+function AlertsScreen({ navigation }: ScreenProps<'Alerts'>) {
+  const [alerts, setAlerts] = useState<ApiAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadAlerts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setAlerts(await api.getAlerts());
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudieron cargar las alertas.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadAlerts();
+    }, [loadAlerts])
+  );
+
+  const markRead = async (alert: ApiAlert) => {
+    if (alert.read) return;
+    setMarkingId(alert.id);
+    setError(null);
+    try {
+      await api.markAlertRead(alert.id);
+      setAlerts(current =>
+        current.map(item =>
+          item.id === alert.id ? { ...item, read: true } : item
+        )
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo actualizar la alerta.'
+      );
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
+  return (
+    <Page
+      title="Alertas"
+      bottom={
+        <BottomTabs
+          active="home"
+          onHome={() => navigation.navigate('ResponsibleHome')}
+          onHistory={() => navigation.navigate('History')}
+          onProfile={() => navigation.navigate('Profile')}
+        />
+      }
+    >
+      <Text style={styles.paragraph}>
+        Notificaciones relevantes sobre la protección de tus dispositivos.
+      </Text>
+      {loading ? <ActivityIndicator color={C.purple} /> : null}
+      <InlineError message={error} />
+      {!loading && alerts.length === 0 && !error ? (
+        <Text style={styles.emptyStateText}>Todavía no hay alertas.</Text>
+      ) : null}
+      {alerts.map(alert => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: alert.read || markingId === alert.id }}
+          disabled={alert.read || markingId === alert.id}
+          key={alert.id}
+          onPress={() => void markRead(alert)}
+          style={[styles.alertCard, alert.read && styles.readAlertCard]}
+        >
+          <View style={styles.alertHeader}>
+            <Text style={styles.alertTitle}>
+              {alert.severity === 'critical'
+                ? 'Alerta crítica'
+                : alert.severity === 'warning'
+                  ? 'Advertencia'
+                  : 'Notificación'}
+            </Text>
+            {!alert.read ? (
+              markingId === alert.id ? (
+                <ActivityIndicator color={C.purple} size="small" />
+              ) : (
+                <Text style={styles.unreadBadge}>Nueva</Text>
+              )
+            ) : null}
+          </View>
+          <Text style={styles.alertMessage}>{alert.message}</Text>
+          <Text style={styles.alertMeta}>
+            {alert.device_name} ·{' '}
+            {new Date(alert.alert_time).toLocaleString('es-AR')}
+          </Text>
+        </Pressable>
+      ))}
+      {error ? (
+        <Button label="Reintentar" outline onPress={() => void loadAlerts()} />
+      ) : null}
     </Page>
   );
 }
 
 function ProfileScreen({ navigation }: ScreenProps<'Profile'>) {
-  const [name, setName] = useState('Usuario');
-  const [surname, setSurname] = useState('Demo');
-  const [email, setEmail] = useState('usuario@example.com');
-  const [password, setPassword] = useState('clave123');
+  const { user } = useAuth();
+  const [name, setName] = useState(user?.name ?? '');
+  const [surname, setSurname] = useState(user?.surname ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [password, setPassword] = useState('');
   const [code, setCode] = useState('12345');
-  const [saved, setSaved] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
   return (
     <Page
       title="Perfil"
@@ -1051,9 +1325,14 @@ function ProfileScreen({ navigation }: ScreenProps<'Profile'>) {
         showPencil
       />
       <Button
-        label={saved ? 'Confirmado' : 'Confirmar'}
-        onPress={() => setSaved(true)}
+        label="Confirmar"
+        onPress={() =>
+          setSaveMessage(
+            'No se guardaron los cambios: el backend aún no ofrece edición de perfil.'
+          )
+        }
       />
+      <InlineError message={saveMessage} />
       <Button
         label="Cancelar"
         outline
@@ -1090,149 +1369,726 @@ function SettingsScreen({ navigation }: ScreenProps<'Settings'>) {
 
 function BlockedSitesScreen({ navigation }: ScreenProps<'BlockedSites'>) {
   return (
-    <Page title="Bloquear Sitios">
-      <Text style={styles.centerSubtitle}>Sitios de información sobre juegos de azar</Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => navigation.navigate('CustomList')}
-        style={styles.listOption}
-      >
-        <View style={styles.listOptionIcon}><ListChecks color={C.purple} size={21} /></View>
-        <Text style={styles.listOptionText}>Lista Personalizada</Text>
-        <ChevronRight color={C.purple} size={18} />
-      </Pressable>
+    <Page
+      title="Bloquear Sitios"
+      bottom={
+        <BottomTabs
+          active="home"
+          onHome={() => navigation.navigate('ResponsibleHome')}
+          onHistory={() => navigation.navigate('History')}
+          onProfile={() => navigation.navigate('Profile')}
+        />
+      }
+    >
+      <Text style={styles.centerSubtitle}>Gestioná los sitios bloqueados</Text>
       <Pressable
         accessibilityRole="button"
         onPress={() => navigation.navigate('Blacklist')}
-        style={styles.listOption}
+        style={styles.blockedListOption}
       >
-        <View style={styles.listOptionIcon}><Shield color={C.purple} size={21} /></View>
-        <Text style={styles.listOptionText}>Lista Negra</Text>
-        <ChevronRight color={C.purple} size={18} />
+        <View style={styles.blockedListOptionIcon}>
+          <ListChecks color={C.purple} size={22} />
+        </View>
+        <View style={styles.blockedListOptionText}>
+          <Text style={styles.blockedListOptionTitle}>Lista Personalizada</Text>
+          <Text style={styles.blockedListOptionDescription}>
+            Editá los sitios bloqueados por el adulto responsable.
+          </Text>
+        </View>
       </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => navigation.navigate('CustomList')}
+        style={styles.blockedListOption}
+      >
+        <View style={styles.blockedListOptionIcon}>
+          <ListChecks color={C.purple} size={22} />
+        </View>
+        <View style={styles.blockedListOptionText}>
+          <Text style={styles.blockedListOptionTitle}>Lista negra</Text>
+          <Text style={styles.blockedListOptionDescription}>
+            Accede a la lista oficial de LOTBA.
+          </Text>
+        </View>
+      </Pressable>
+      <View style={styles.blockedSitesBack}>
+        <Button label="Atrás" outline onPress={() => navigation.goBack()} />
+      </View>
     </Page>
   );
 }
 
 function CustomListScreen({ navigation }: ScreenProps<'CustomList'>) {
-  const [enabled, setEnabled] = useState(true);
+  const [items, setItems] = useState<{ key: string; value: string; type: string }[]>([]);
+  const [siteCount, setSiteCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadList = useCallback(async () => {
+    setError(null);
+    setSyncStatus('Actualización pendiente…');
+    try {
+      const result = await api.getSystemBlocklist();
+      const rules = [
+        ...result.domain.map(value => ({ key: `domain-${value}`, value, type: 'Dominio' })),
+        ...result.keyword.map(value => ({ key: `keyword-${value}`, value, type: 'Palabra clave' })),
+        ...result.regex.map(value => ({ key: `regex-${value}`, value, type: 'Patrón' })),
+      ];
+      setItems(rules);
+      setSiteCount(result.total);
+      setSyncStatus(
+        result.status === 'RESET'
+          ? 'Lista oficial sincronizada.'
+          : 'La lista oficial ya estaba actualizada.'
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo cargar la lista oficial.'
+      );
+      setSyncStatus('Desconectado: no se pudo consultar la lista oficial.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      void loadList();
+    }, [loadList])
+  );
+
   return (
-    <Page title="Lista Personalizada">
-      <Text style={styles.paragraph}>Elegí si querés bloquear sitios de información sobre juegos de azar.</Text>
-      <View style={styles.settingRow}>
-        <View style={styles.settingText}>
-          <Text style={styles.cardTitle}>Sitios informativos</Text>
-          <Text style={styles.cardDescription}>2443 sitios incluidos en la lista.</Text>
-        </View>
-        <Switch value={enabled} onValueChange={setEnabled} trackColor={{ true: C.green }} />
+    <Page
+      title="Lista negra"
+      scroll={false}
+      bottom={
+        <BottomTabs
+          active="home"
+          onHome={() => navigation.navigate('ResponsibleHome')}
+          onHistory={() => navigation.navigate('History')}
+          onProfile={() => navigation.navigate('Profile')}
+        />
+      }
+    >
+      <View style={styles.listPageContent}>
+        <Text style={styles.listDescription}>
+          Reglas oficiales de bloqueo publicadas para todos los dispositivos.
+        </Text>
+        <Text style={styles.listStatus}>
+          {loading
+            ? 'Actualización pendiente…'
+            : `${siteCount} reglas · ${syncStatus ?? ''}`}
+        </Text>
+        <InlineError message={error} />
+        {error ? (
+          <Button
+            label="Reintentar"
+            outline
+            onPress={() => {
+              setRefreshing(true);
+              void loadList();
+            }}
+          />
+        ) : null}
+        <FlatList
+          data={items}
+          initialNumToRender={12}
+          keyExtractor={item => item.key}
+          ListEmptyComponent={
+            loading ? (
+              <ActivityIndicator color={C.purple} />
+            ) : error ? undefined : (
+              <Text style={styles.emptyStateText}>La lista oficial está vacía.</Text>
+            )
+          }
+          onRefresh={() => {
+            setRefreshing(true);
+            void loadList();
+          }}
+          refreshing={refreshing}
+          renderItem={({ item }) => (
+            <View style={styles.officialRuleRow}>
+              <View style={styles.officialRuleText}>
+                <Text style={styles.siteText}>{item.value}</Text>
+                <Text style={styles.ruleType}>{item.type}</Text>
+              </View>
+              <Shield color={C.purple} size={17} />
+            </View>
+          )}
+          style={styles.officialRulesList}
+          windowSize={7}
+        />
+        <Button label="Volver" outline onPress={() => navigation.goBack()} />
       </View>
-      <Button label="Confirmar" onPress={() => navigation.goBack()} />
     </Page>
   );
 }
 
 function BlacklistScreen({ navigation }: ScreenProps<'Blacklist'>) {
   const [site, setSite] = useState('');
-  const [sites, setSites] = useState(['www.aposta.com', 'casino.example']);
-  const addSite = () => {
+  const [sites, setSites] = useState<ApiRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const loadSites = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setSites(await api.getCustomRules());
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo cargar la lista personalizada.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.getCustomRules()
+      .then(items => {
+        if (active) setSites(items);
+      })
+      .catch(requestError => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : 'No se pudo cargar la lista personalizada.'
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const addSite = async () => {
     const value = site.trim();
     if (!value) return;
-    setSites(current => [value, ...current]);
-    setSite('');
+    setSaving(true);
+    setError(null);
+    try {
+      await api.addCustomRule(value, 'domain');
+      setSite('');
+      await loadSites();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo guardar el sitio.'
+      );
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const removeSite = async (ruleId: string) => {
+    setDeletingId(ruleId);
+    setError(null);
+    try {
+      await api.deleteCustomRule(ruleId);
+      await loadSites();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo quitar el sitio.'
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+  const visibleSites = sites.filter(item =>
+    item.value.toLowerCase().includes(site.trim().toLowerCase())
+  );
   return (
-    <Page title="Lista Negra">
-      <Text style={styles.paragraph}>Administrá los sitios bloqueados manualmente.</Text>
-      <Field placeholder="Dirección del sitio" value={site} onChangeText={setSite} />
-      <Button label="Agregar sitio" disabled={!site.trim()} onPress={addSite} />
-      <Text style={styles.sectionHeading}>Sitios bloqueados ({sites.length})</Text>
-      {sites.map((item, index) => (
-        <View key={`${item}-${index}`} style={styles.siteRow}>
-          <Text style={styles.siteText}>{item}</Text>
+    <Page
+      title="Bloquear Sitios"
+      bottom={
+        <BottomTabs
+          active="home"
+          onHome={() => navigation.navigate('ResponsibleHome')}
+          onHistory={() => navigation.navigate('History')}
+          onProfile={() => navigation.navigate('Profile')}
+        />
+      }
+    >
+      <Text style={styles.centerSubtitle}>Añade sitios a la lista personalizada</Text>
+      <View style={styles.customListSearch}>
+        <Search color={C.purpleText} size={18} />
+        <TextInput
+          accessibilityLabel="Buscar o añadir sitio"
+          autoCapitalize="none"
+          keyboardType="url"
+          onChangeText={setSite}
+          placeholder="Buscar"
+          placeholderTextColor={C.muted}
+          style={styles.customListSearchInput}
+          value={site}
+        />
+      </View>
+      <InlineError message={error} />
+      {loading ? <ActivityIndicator color={C.purple} /> : null}
+      {visibleSites.map(item => (
+        <View key={item.id} style={styles.customListSiteRow}>
+          <Text numberOfLines={1} style={styles.customListSiteText}>{item.value}</Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Quitar ${item}`}
-            onPress={() => setSites(current => current.filter((_, siteIndex) => siteIndex !== index))}
+            accessibilityLabel={`Quitar ${item.value} de la lista personalizada`}
+            disabled={deletingId === item.id}
+            onPress={() => void removeSite(item.id)}
+            style={styles.customListCheck}
           >
-            <Text style={styles.removeSite}>Quitar</Text>
+            {deletingId === item.id ? (
+              <ActivityIndicator color={C.purple} size="small" />
+            ) : (
+              <Check color={C.white} size={13} strokeWidth={3} />
+            )}
           </Pressable>
         </View>
       ))}
+      {!loading && sites.length === 0 && !error ? (
+        <Text style={styles.emptyStateText}>Todavía no agregaste reglas personalizadas.</Text>
+      ) : null}
+      {!loading && sites.length > 0 && visibleSites.length === 0 ? (
+        <Text style={styles.emptyStateText}>No hay sitios que coincidan con la búsqueda.</Text>
+      ) : null}
+      {error ? (
+        <Button label="Reintentar" outline onPress={() => void loadSites()} />
+      ) : null}
+      <View style={styles.customListActions}>
+        <Button
+          label="Aceptar"
+          disabled={!site.trim()}
+          loading={saving}
+          onPress={() => void addSite()}
+        />
+        <Button label="Atrás" outline onPress={() => navigation.goBack()} />
+      </View>
     </Page>
   );
 }
 
 function DevicesScreen({ navigation }: ScreenProps<'Devices'>) {
-  const devices = [
-    { name: 'Celular de Cami', icon: <Smartphone color={C.purple} size={20} /> },
-    { name: 'Tablet de Nico', icon: <Tablet color={C.purple} size={20} /> },
-    { name: 'Notebook de mamá', icon: <Laptop color={C.purple} size={20} /> },
-  ];
+  const [devices, setDevices] = useState<ApiDevice[]>([]);
+  const [protectionEnabled, setProtectionEnabled] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const loadDevices = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setDevices(await api.getDevices());
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudieron cargar los dispositivos.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadDevices();
+    }, [loadDevices])
+  );
+
   return (
-    <Page title="Vincular Dispositivos">
-      {devices.map(device => (
-        <View key={device.name} style={styles.deviceRow}>
-          <View style={styles.deviceIcon}>{device.icon}</View>
-          <Text style={styles.deviceName}>{device.name}</Text>
-          <Text style={styles.deviceStatus}>Vinculado</Text>
-        </View>
-      ))}
-      <Button
-        label="Vincular nuevo dispositivo"
+    <Page
+      title="Dispositivos Vinculados"
+      bottom={
+        <BottomTabs
+          active="home"
+          onHome={() => navigation.navigate('ResponsibleHome')}
+          onHistory={() => navigation.navigate('History')}
+          onProfile={() => navigation.navigate('Profile')}
+        />
+      }
+    >
+      <HomeCard
+        icon={<Smartphone color={C.purple} size={22} />}
+        title="Vincular nuevo dispositivo"
+        subtitle="Generá un código de vinculación."
+        color={C.purple}
         onPress={() => navigation.navigate('LinkDeviceGuide')}
       />
+      <Text style={styles.centerSubtitle}>Administrá tus dispositivos</Text>
+      {loading ? <ActivityIndicator color={C.purple} /> : null}
+      <InlineError message={error} />
+      {devices.map(device => {
+        const connected = getDeviceConnectionState(device) === 'Conectado';
+        const deviceIcon = device.os_model?.toLowerCase().includes('tablet')
+          ? <Tablet color={C.purple} size={22} />
+          : device.os_model?.toLowerCase().includes('notebook')
+            ? <Laptop color={C.purple} size={22} />
+            : <Smartphone color={C.purple} size={22} />;
+        return (
+          <View
+            key={device.id}
+            style={[
+              styles.deviceCard,
+              connected ? styles.connectedDeviceCard : styles.disconnectedDeviceCard,
+            ]}
+          >
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('DeviceDetail', { device })}
+              style={styles.deviceCardMain}
+            >
+              <View style={styles.deviceCardIcon}>{deviceIcon}</View>
+              <View style={styles.deviceCardText}>
+                <Text style={styles.deviceCardName}>{device.alias_name}</Text>
+                <Text style={styles.deviceCardStatus}>
+                  {getDeviceConnectionState(device)}
+                </Text>
+              </View>
+            </Pressable>
+            <Switch
+              accessibilityLabel={`Protección para ${device.alias_name}`}
+              onValueChange={value =>
+                setProtectionEnabled(current => ({ ...current, [device.id]: value }))
+              }
+              thumbColor={C.white}
+              trackColor={{ false: '#B9B5C9', true: C.purple }}
+              value={protectionEnabled[device.id] ?? connected}
+            />
+          </View>
+        );
+      })}
+      {!loading && devices.length === 0 && !error ? (
+        <Text style={styles.emptyStateText}>
+          Todavía no hay dispositivos vinculados.
+        </Text>
+      ) : null}
+      {error ? (
+        <Button label="Reintentar" outline onPress={() => void loadDevices()} />
+      ) : null}
+    </Page>
+  );
+}
+
+function DeviceDetailScreen({
+  navigation,
+  route,
+}: ScreenProps<'DeviceDetail'>) {
+  const [device, setDevice] = useState(route.params.device);
+  const [loading, setLoading] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      setLoading(true);
+      setError(null);
+      api.getDevices()
+        .then(devices => {
+          const current = devices.find(item => item.id === route.params.device.id);
+          if (active && current) setDevice(current);
+        })
+        .catch(requestError => {
+          if (active) {
+            setError(
+              requestError instanceof Error
+                ? requestError.message
+                : 'No se pudo actualizar el estado del dispositivo.'
+            );
+          }
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+      return () => {
+        active = false;
+      };
+    }, [route.params.device.id])
+  );
+
+  const unlinkDevice = async () => {
+    setUnlinking(true);
+    setError(null);
+    try {
+      await api.requestDeviceUnlink(device.id);
+      navigation.navigate('Devices');
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo desvincular el dispositivo.'
+      );
+    } finally {
+      setUnlinking(false);
+    }
+  };
+
+  return (
+    <Page title="Detalle del dispositivo">
+      <View style={styles.deviceDetailHero}>
+        <View style={styles.deviceDetailIcon}>
+          <Smartphone color={C.purple} size={29} />
+        </View>
+        <Text style={styles.deviceDetailAlias}>{device.alias_name}</Text>
+        <Text style={styles.deviceStatus}>{getDeviceConnectionState(device)}</Text>
+      </View>
+      {loading ? <ActivityIndicator color={C.purple} /> : null}
+      <InlineError message={error} />
+      {error ? (
+        <Button
+          label="Reintentar"
+          outline
+          onPress={() => navigation.replace('DeviceDetail', { device })}
+        />
+      ) : null}
+      <View style={styles.deviceInfoCard}>
+        <Text style={styles.deviceInfoLabel}>Estado de protección</Text>
+        <Text style={styles.deviceInfoValue}>
+          {device.protection_status ? 'Reportada activa' : 'Pendiente'}
+        </Text>
+        <Text style={styles.backendLimitation}>
+          El backend informa el estado de vínculo; los permisos del sistema Android aún no se verifican en esta versión.
+        </Text>
+      </View>
+      <View style={styles.deviceInfoCard}>
+        <Text style={styles.deviceInfoLabel}>Sistema</Text>
+        <Text style={styles.deviceInfoValue}>{device.os_model || 'No informado'}</Text>
+      </View>
+      <View style={styles.deviceInfoCard}>
+        <Text style={styles.deviceInfoLabel}>Última conexión</Text>
+        <Text style={styles.deviceInfoValue}>
+          {device.last_ping
+            ? new Date(device.last_ping).toLocaleString('es-AR')
+            : 'Sin conexión registrada'}
+        </Text>
+      </View>
+      <View style={styles.deviceInfoCard}>
+        <Text style={styles.deviceInfoLabel}>Alias del dispositivo</Text>
+        <Text style={styles.deviceInfoValue}>{device.alias_name}</Text>
+      </View>
+      <Button
+        label="Ver alertas"
+        onPress={() => navigation.navigate('Alerts')}
+      />
+      <Button
+        label="Ver historial"
+        outline
+        onPress={() => navigation.navigate('History')}
+      />
+      {device.status === 'linked' ? (
+        <Button
+          label="Desvincular dispositivo"
+          disabled={unlinking}
+          loading={unlinking}
+          outline
+          onPress={() => void unlinkDevice()}
+        />
+      ) : null}
     </Page>
   );
 }
 
 function LinkDeviceGuideScreen({ navigation }: ScreenProps<'LinkDeviceGuide'>) {
+  const [code, setCode] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const requestNewCode = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+      setError(null);
+      setCode(null);
+      setSecondsRemaining(null);
+      setExpiresAt(null);
+    }
+    try {
+      const result = await api.generatePairingCode();
+      setCode(result.code);
+      setExpiresAt(result.expiresAt);
+      setSecondsRemaining(
+        Math.max(0, Math.ceil((Date.parse(result.expiresAt) - Date.now()) / 1000))
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo generar el código de vinculación.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void requestNewCode(false);
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [requestNewCode]);
+
+  useEffect(() => {
+    if (!expiresAt) return undefined;
+    const updateRemaining = () => {
+      const seconds = Math.max(
+        0,
+        Math.ceil((Date.parse(expiresAt) - Date.now()) / 1000)
+      );
+      setSecondsRemaining(seconds);
+    };
+    const interval = setInterval(updateRemaining, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
   return (
     <Page title="Vincular dispositivo">
       <View style={styles.guideIcon}>
         <Smartphone color={C.purple} size={46} />
       </View>
       <Text style={styles.paragraph}>
-        Para vincular un equipo, instalá BA Protege+ en el dispositivo y seguí las instrucciones de configuración.
+        En el dispositivo protegido, elegí Modo Protegido e ingresá este código temporal.
       </Text>
       <View style={styles.noticeCard}>
         <Text style={styles.smallText}>
-          Asegurate de tener ambos dispositivos disponibles. Una vez vinculado, aparecerá en tu lista de dispositivos.
+          El código vence en 10 minutos y solo puede utilizarse una vez. Asigná un alias al dispositivo durante la configuración.
         </Text>
       </View>
-      <Button label="Aceptar" onPress={() => navigation.goBack()} />
+      {loading ? <ActivityIndicator color={C.purple} /> : null}
+      <InlineError message={error} />
+      {code ? (
+        <>
+          <Text style={styles.pairingCodeLabel}>Código temporal de vinculación</Text>
+          {secondsRemaining === 0 ? (
+            <Text style={styles.expiredCode}>Código vencido</Text>
+          ) : (
+            <>
+              <Text style={styles.pairingCode}>{code}</Text>
+              <Text style={styles.pairingExpiry}>
+                Vence en {Math.floor((secondsRemaining ?? 0) / 60)}:
+                {String((secondsRemaining ?? 0) % 60).padStart(2, '0')}
+              </Text>
+            </>
+          )}
+        </>
+      ) : null}
+      {secondsRemaining === 0 || error ? (
+        <Button
+          label="Generar un nuevo código"
+          loading={loading}
+          onPress={() => void requestNewCode()}
+        />
+      ) : (
+        <Button label="Aceptar" onPress={() => navigation.goBack()} />
+      )}
     </Page>
   );
 }
 
 function ProtectedCodeScreen({ navigation }: ScreenProps<'ProtectedCode'>) {
   const [code, setCode] = useState('');
+  const [alias, setAlias] = useState('');
   const [messageVisible, setMessageVisible] = useState(false);
-  const ready = code.length === 5;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [codeExpired, setCodeExpired] = useState(false);
+  const [deviceUuid] = useState(createDeviceUuid);
+  const ready = code.length === 6 && alias.trim().length > 0;
+
+  const submitCode = async () => {
+    setLoading(true);
+    setError(null);
+    setCodeExpired(false);
+    try {
+      const osModel = `${Platform.OS} ${String(Platform.Version)}`;
+      await api.consumePairingCode({
+        code,
+        alias_name: alias.trim(),
+        device_uuid: deviceUuid,
+        os_model: osModel,
+      });
+      navigation.navigate('ProtectionSetup', { step: 1 });
+    } catch (requestError) {
+      const message =
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo vincular este dispositivo.';
+      const expired =
+        /vencid|expir|inválido|invalido|INVALID_OR_EXPIRED_CODE/i.test(message);
+      setCodeExpired(expired);
+      setError(
+        expired
+          ? 'El código venció o no es válido. Pedile al responsable que genere uno nuevo.'
+          : message
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Page title="Modo Protegido">
-      <Text style={styles.noticeTitle}>¡Revisá tus notificaciones!</Text>
-      <Text style={styles.noticeSubtitle}>Ingresá el código de acceso que te enviamos al dispositivo del responsable.</Text>
+      <Text style={styles.noticeTitle}>Vinculá este dispositivo</Text>
+      <Text style={styles.noticeSubtitle}>
+        Ingresá el código temporal que aparece en el dispositivo del responsable.
+      </Text>
+      <Field
+        label="Alias del dispositivo"
+        value={alias}
+        onChangeText={setAlias}
+        placeholder="Por ejemplo: Celular"
+        maxLength={40}
+      />
       <PinEntry
-        accessibilityLabel="Código de acceso"
+        accessibilityLabel="Código temporal de vinculación"
         value={code}
-        onChangeText={setCode}
+        onChangeText={value => {
+          setCode(value);
+          setError(null);
+          setCodeExpired(false);
+        }}
         masked
+        length={6}
       />
       <Pressable
         accessibilityRole="button"
         onPress={() => setMessageVisible(true)}
         style={styles.textLinkWrap}
       >
-        <Text style={styles.textLink}>Si no recibiste el código, hacé click aquí.</Text>
+        <Text style={styles.textLink}>¿No tenés el código?</Text>
       </Pressable>
-      {messageVisible ? <Text style={styles.inlineNotice}>Revisá las notificaciones de tu dispositivo responsable.</Text> : null}
+      {messageVisible ? (
+        <Text style={styles.inlineNotice}>
+          Pedile al responsable que genere un código temporal desde Dispositivos.
+        </Text>
+      ) : null}
+      {codeExpired ? (
+        <Text style={styles.expiredCode}>
+          El código venció. El dispositivo debe recibir uno nuevo del responsable.
+        </Text>
+      ) : null}
+      <InlineError message={codeExpired ? null : error} />
       <View style={styles.formActions}>
         <Button
           label="Confirmar"
           disabled={!ready}
-          onPress={() =>
-            navigation.navigate('ProtectionSetup', { step: 1, accessCode: code })
-          }
+          loading={loading}
+          onPress={() => void submitCode()}
         />
         <Button label="Cancelar" outline onPress={() => navigation.goBack()} />
       </View>
@@ -1260,8 +2116,8 @@ const protectionSteps: ProtectionStep[] = [
     help: true,
   },
   {
-    subtitle: 'Fijá BA Protege+ en el dispositivo del menor.',
-    description: 'De esta manera el menor no podrá apagar la aplicación.',
+    subtitle: 'Fijá BA Protege+ en el dispositivo protegido.',
+    description: 'De esta manera no se podrá apagar la aplicación fácilmente.',
     instructions: [
       'Ve al menú Aceleración.',
       'Seleccioná la sección Aplicaciones Fijadas.',
@@ -1281,7 +2137,7 @@ const protectionSteps: ProtectionStep[] = [
   },
   {
     subtitle: 'Activá la protección contra eliminación.',
-    description: 'Para evitar que el menor borre accidentalmente la app.',
+    description: 'Para evitar que se borre accidentalmente la aplicación.',
     instructions: [
       'Pulsá el botón Activar la app de administrador.',
       'Marcá la casilla y pulsá aceptar.',
@@ -1306,7 +2162,7 @@ const protectionSteps: ProtectionStep[] = [
   {
     subtitle: 'Establecé un nuevo código de acceso de cinco dígitos',
     description:
-      'Para que puedas desbloquear fácilmente el dispositivo del menor si es necesario.',
+      'Para que puedas desbloquear fácilmente el dispositivo protegido si es necesario.',
     warning:
       'No uses combinaciones simples como “1234” o una fecha de nacimiento, dado que podría descifrarse fácilmente.',
     instructions: [],
@@ -1315,7 +2171,7 @@ const protectionSteps: ProtectionStep[] = [
   {
     subtitle: 'Repetí el código de acceso',
     description:
-      'Para que puedas desbloquear fácilmente el dispositivo del menor si es necesario.',
+      'Para que puedas desbloquear fácilmente el dispositivo protegido si es necesario.',
     warning:
       'No uses combinaciones simples como “1234” o una fecha de nacimiento, dado que podría descifrarse fácilmente.',
     instructions: [],
@@ -1327,39 +2183,58 @@ function ProtectionSetupScreen({
   navigation,
   route,
 }: ScreenProps<'ProtectionSetup'>) {
-  const { step, accessCode, newCode } = route.params;
+  const { step, newCode } = route.params;
   const currentStep = Math.min(Math.max(step, 1), protectionSteps.length);
   const details = protectionSteps[currentStep - 1];
   const [code, setCode] = useState('');
   const [helpVisible, setHelpVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const ready =
     code.length === 5 && (currentStep !== 8 || code === newCode);
   const isCodeStep = currentStep >= 7;
 
-  const continueSetup = () => {
+  const continueSetup = async () => {
     if (currentStep === 7) {
       navigation.push('ProtectionSetup', {
         step: 8,
-        accessCode,
         newCode: code,
       });
       return;
     }
 
     if (currentStep === 8) {
+      setSaving(true);
+      setError(null);
+      try {
+        await api.completeProtectedDeviceSetup(code);
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'No se pudo guardar la configuración.'
+        );
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
       navigation.navigate('ProtectionComplete');
       return;
     }
 
     navigation.push('ProtectionSetup', {
       step: currentStep + 1,
-      accessCode,
       newCode,
     });
   };
 
   return (
     <Page title="Configurar Protección">
+      {currentStep < 7 ? (
+        <Text style={styles.backendLimitation}>
+          Confirmá cada paso después de habilitarlo en los ajustes de Android. La app muestra la guía, pero esta versión no puede validar permisos del sistema.
+        </Text>
+      ) : null}
       <Text style={styles.protectionStepTitle}>{details.subtitle}</Text>
       {details.description && !isCodeStep ? (
         <Text style={styles.protectionStepDescription}>{details.description}</Text>
@@ -1419,7 +2294,8 @@ function ProtectionSetupScreen({
           <Button
             label="Confirmar"
             disabled={!ready}
-            onPress={continueSetup}
+            loading={saving}
+            onPress={() => void continueSetup()}
           />
           <Button
             label="Cancelar"
@@ -1428,6 +2304,7 @@ function ProtectionSetupScreen({
           />
         </View>
       )}
+      <InlineError message={error} />
     </Page>
   );
 }
@@ -1435,17 +2312,63 @@ function ProtectionSetupScreen({
 function ProtectionCompleteScreen({
   navigation,
 }: ScreenProps<'ProtectionComplete'>) {
+  const [syncing, setSyncing] = useState(true);
+  const [syncMessage, setSyncMessage] = useState('Actualización pendiente…');
+  const [error, setError] = useState<string | null>(null);
+
+  const syncRules = useCallback(async () => {
+    setSyncing(true);
+    setError(null);
+    setSyncMessage('Actualización pendiente…');
+    try {
+      const result = await api.syncProtectedRules();
+      setSyncMessage(
+        result.status === 'RESET'
+          ? 'Reglas personalizadas actualizadas.'
+          : 'Las reglas personalizadas ya están actualizadas.'
+      );
+    } catch (requestError) {
+      setSyncMessage('Actualización pendiente: sin conexión con el servidor.');
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudieron actualizar las reglas.'
+      );
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void syncRules();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [syncRules]);
+
   return (
     <Page>
       <View style={styles.successHero}>
         <Check color={C.green} size={32} strokeWidth={3} />
       </View>
       <Text style={styles.protectionCompleteTitle}>
-        Ahora podés gestionar el bloqueo de sitios de apuestas ilegales en el dispositivo del menor.
+        Ahora podés gestionar el bloqueo de sitios de apuestas ilegales en el dispositivo protegido.
       </Text>
       <Text style={styles.successMessage}>
-        BA Protege+ se mantendrá en el dispositivo del adulto y bloqueará los sitios de apuestas y juegos ilegales en el dispositivo del menor.
+        BA Protege+ se mantendrá en este dispositivo y aplicará las reglas disponibles cuando los permisos de Android estén habilitados.
       </Text>
+      <View style={styles.syncStatusCard}>
+        {syncing ? <ActivityIndicator color={C.purple} size="small" /> : null}
+        <Text style={styles.syncStatusText}>{syncMessage}</Text>
+      </View>
+      <InlineError message={error} />
+      {error ? (
+        <Button
+          label="Reintentar sincronización"
+          outline
+          onPress={() => void syncRules()}
+        />
+      ) : null}
       <View style={styles.formActions}>
         <Button
           label="Terminar configuración"
@@ -1458,34 +2381,113 @@ function ProtectionCompleteScreen({
 
 function ProtectedHomeScreen({ navigation }: ScreenProps<'ProtectedHome'>) {
   const [unlocked, setUnlocked] = useState(false);
+  const [pin, setPin] = useState('');
+  const [deviceAlias, setDeviceAlias] = useState('');
+  const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [setupComplete, setSetupComplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.getProtectedDeviceDetails().then(device => {
+      if (active && device) {
+        setDeviceAlias(device.aliasName);
+        setAccessCode(device.localAccessCode ?? null);
+        setSetupComplete(Boolean(device.protectionSetupComplete));
+      }
+    }).catch(requestError => {
+      if (active) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'No se pudo consultar la configuración local.'
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const unlock = () => {
+    if (pin === accessCode && accessCode) {
+      setUnlocked(true);
+      setError(null);
+    } else {
+      setError('El código ingresado no coincide.');
+    }
+  };
+
   return (
     <Page title="Modo Protegido">
       <View style={styles.protectedCard}>
         <Shield color={C.white} size={36} />
-        <Text style={styles.protectedTitle}>Dispositivo protegido</Text>
-        <Text style={styles.protectedCaption}>La protección está activa en este dispositivo.</Text>
+        <Text style={styles.protectedTitle}>
+          {deviceAlias || 'Dispositivo protegido'}
+        </Text>
+        <Text style={styles.protectedCaption}>
+          {setupComplete
+            ? 'Configuración completada. Los permisos del sistema deben mantenerse activos.'
+            : 'La configuración de protección está pendiente.'}
+        </Text>
       </View>
-      <Button
-        label={unlocked ? 'Protección activa' : 'Ver estado de protección'}
-        onPress={() => setUnlocked(true)}
-      />
+      {unlocked ? (
+        <>
+          <Text style={styles.deviceInfoValue}>Estado: configuración completada</Text>
+          <Button
+            label="Ocultar estado"
+            outline
+            onPress={() => setUnlocked(false)}
+          />
+        </>
+      ) : (
+        <>
+          <Text style={styles.paragraph}>
+            Ingresá el código de acceso local para consultar el estado.
+          </Text>
+          <PinEntry
+            accessibilityLabel="Código de acceso local"
+            value={pin}
+            onChangeText={value => {
+              setPin(value);
+              setError(null);
+            }}
+            masked
+          />
+          <InlineError message={error} />
+          <Button
+            label="Ver estado de protección"
+            disabled={pin.length !== 5}
+            onPress={unlock}
+          />
+        </>
+      )}
       <Button label="Cancelar" outline onPress={() => navigation.popToTop()} />
     </Page>
   );
 }
 
+function createDeviceUuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 export default function LotbaFlowApp() {
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="Splash"
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-            contentStyle: { backgroundColor: C.white },
-          }}
-        >
+      <AuthProvider>
+        <NavigationContainer>
+          <Stack.Navigator
+            initialRouteName="Splash"
+            screenOptions={{
+              headerShown: false,
+              animation: 'slide_from_right',
+              contentStyle: { backgroundColor: C.white },
+            }}
+          >
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="Onboarding1">
             {props => <OnboardingScreen {...props} step={1} />}
@@ -1521,13 +2523,16 @@ export default function LotbaFlowApp() {
           <Stack.Screen name="CustomList" component={CustomListScreen} />
           <Stack.Screen name="Blacklist" component={BlacklistScreen} />
           <Stack.Screen name="Devices" component={DevicesScreen} />
+          <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} />
+          <Stack.Screen name="Alerts" component={AlertsScreen} />
           <Stack.Screen name="LinkDeviceGuide" component={LinkDeviceGuideScreen} />
           <Stack.Screen name="ProtectedCode" component={ProtectedCodeScreen} />
           <Stack.Screen name="ProtectedHome" component={ProtectedHomeScreen} />
           <Stack.Screen name="ProtectionSetup" component={ProtectionSetupScreen} />
           <Stack.Screen name="ProtectionComplete" component={ProtectionCompleteScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+          </Stack.Navigator>
+        </NavigationContainer>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }
@@ -1553,7 +2558,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: C.purple,
     flexDirection: 'row',
-    height: 74,
+    height: 156,
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
@@ -1565,8 +2570,29 @@ const styles = StyleSheet.create({
   },
   brandTitle: {
     color: C.white,
-    fontSize: 26,
+    fontSize: 32,
     fontWeight: '700',
+  },
+  usageHeader: {
+    backgroundColor: C.purple,
+    height: 192,
+    justifyContent: 'space-between',
+    paddingTop: 8,
+  },
+  usageBrand: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  usageBrandTitle: {
+    color: C.white,
+    fontSize: 32,
+    fontWeight: '700',
+  },
+  usageLotbaLogo: {
+    height: 30,
+    marginTop: 2,
+    width: 112,
   },
   pageBody: {
     backgroundColor: C.white,
@@ -1575,13 +2601,16 @@ const styles = StyleSheet.create({
   bodyContent: {
     paddingBottom: 28,
     paddingHorizontal: 20,
-    paddingTop: 18,
+    paddingTop: 22,
+  },
+  immersiveBodyContent: {
+    paddingTop: 30,
   },
   pageTitle: {
     color: C.purpleText,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
-    marginBottom: 16,
+    marginBottom: 20,
     textAlign: 'center',
   },
   button: {
@@ -1592,13 +2621,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: 'center',
     marginBottom: 8,
-    minHeight: 44,
+    minHeight: 64,
     paddingHorizontal: 14,
     width: '100%',
   },
   buttonText: {
     color: C.white,
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -1804,6 +2833,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 8,
   },
+  onboardingLotbaLogo: {
+    alignItems: 'center',
+    backgroundColor: C.purple,
+    borderRadius: 8,
+    height: 92,
+    justifyContent: 'center',
+    marginBottom: 14,
+    width: 156,
+  },
+  onboardingLotbaImage: {
+    height: 82,
+    width: 118,
+  },
   onboardingTitle: {
     color: C.purpleText,
     fontSize: 18,
@@ -1955,9 +2997,9 @@ const styles = StyleSheet.create({
   },
   centerSubtitle: {
     color: C.purpleText,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 14,
+    fontSize: 15,
+    lineHeight: 21,
+    marginBottom: 18,
     textAlign: 'center',
   },
   noticeCard: {
@@ -1980,42 +3022,42 @@ const styles = StyleSheet.create({
   },
   modeDescription: {
     color: C.purpleText,
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 18,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 22,
     textAlign: 'center',
   },
   modeTile: {
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 14,
     flexDirection: 'row',
-    marginBottom: 12,
-    minHeight: 66,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    marginBottom: 14,
+    minHeight: 120,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
   },
   modeTileIcon: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 18,
-    height: 36,
+    borderRadius: 26,
+    height: 52,
     justifyContent: 'center',
-    marginRight: 10,
-    width: 36,
+    marginRight: 14,
+    width: 52,
   },
   modeTileText: {
     flex: 1,
   },
   modeTileTitle: {
     color: C.white,
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '700',
   },
   modeTileSubtitle: {
     color: C.white,
-    fontSize: 10,
-    lineHeight: 14,
-    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 5,
   },
   cardTitle: {
     color: C.purpleText,
@@ -2041,60 +3083,84 @@ const styles = StyleSheet.create({
     borderColor: C.purple,
   },
   homeActions: {
+    paddingHorizontal: 0,
+    paddingTop: 20,
+  },
+  homeSummary: {
     paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingTop: 4,
+  },
+  homeSummaryHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  homeDeviceRow: {
+    alignItems: 'center',
+    borderBottomColor: C.border,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    minHeight: 50,
+    paddingVertical: 5,
+  },
+  emptyStateText: {
+    color: C.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 14,
+    textAlign: 'center',
   },
   homeCard: {
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
     flexDirection: 'row',
-    marginBottom: 7,
-    minHeight: 66,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    marginBottom: 12,
+    minHeight: 124,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
   },
   homeIcon: {
     alignItems: 'center',
     backgroundColor: C.white,
-    borderRadius: 15,
-    height: 30,
+    borderRadius: 25,
+    height: 50,
     justifyContent: 'center',
-    marginRight: 10,
-    width: 30,
+    marginRight: 14,
+    width: 50,
   },
   homeCardText: {
     flex: 1,
   },
   homeCardTitle: {
     color: C.white,
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: '700',
   },
   homeCardSubtitle: {
     color: C.white,
-    fontSize: 10,
-    lineHeight: 13,
-    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
   },
   tabs: {
     alignItems: 'center',
     backgroundColor: C.purple,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    minHeight: 48,
-    paddingBottom: 4,
-    paddingTop: 4,
+    minHeight: 62,
+    paddingBottom: 5,
+    paddingTop: 5,
   },
   tab: {
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
-    minHeight: 42,
+    minHeight: 52,
   },
   tabLabel: {
     color: C.white,
-    fontSize: 9,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 3,
   },
   activeTabLabel: {
     fontWeight: '700',
@@ -2170,6 +3236,84 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  blockedListOption: {
+    alignItems: 'center',
+    backgroundColor: C.purple,
+    borderRadius: 16,
+    flexDirection: 'row',
+    marginBottom: 12,
+    minHeight: 124,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  blockedListOptionIcon: {
+    alignItems: 'center',
+    backgroundColor: C.white,
+    borderRadius: 24,
+    height: 48,
+    justifyContent: 'center',
+    marginRight: 14,
+    width: 48,
+  },
+  blockedListOptionText: {
+    flex: 1,
+  },
+  blockedListOptionTitle: {
+    color: C.white,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  blockedListOptionDescription: {
+    color: C.white,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  blockedSitesBack: {
+    marginTop: 100,
+  },
+  customListSearch: {
+    alignItems: 'center',
+    backgroundColor: C.pale,
+    borderRadius: 32,
+    flexDirection: 'row',
+    height: 58,
+    marginBottom: 14,
+    paddingHorizontal: 16,
+  },
+  customListSearchInput: {
+    color: C.purpleText,
+    flex: 1,
+    fontSize: 15,
+    marginLeft: 8,
+    minHeight: 48,
+    paddingVertical: 0,
+  },
+  customListSiteRow: {
+    alignItems: 'center',
+    borderColor: C.purple,
+    borderWidth: 1,
+    flexDirection: 'row',
+    minHeight: 44,
+    paddingHorizontal: 10,
+  },
+  customListSiteText: {
+    color: C.purpleText,
+    flex: 1,
+    fontSize: 13,
+  },
+  customListCheck: {
+    alignItems: 'center',
+    backgroundColor: C.purple,
+    borderRadius: 2,
+    height: 20,
+    justifyContent: 'center',
+    marginLeft: 8,
+    width: 20,
+  },
+  customListActions: {
+    marginTop: 72,
+  },
   sectionHeading: {
     color: C.purpleText,
     fontSize: 14,
@@ -2189,6 +3333,46 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
   },
+  listPageContent: {
+    flex: 1,
+    paddingBottom: 8,
+    paddingHorizontal: 20,
+  },
+  listDescription: {
+    color: C.purpleText,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  listStatus: {
+    color: C.muted,
+    fontSize: 11,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  officialRulesList: {
+    flex: 1,
+    marginBottom: 8,
+  },
+  officialRuleRow: {
+    alignItems: 'center',
+    borderBottomColor: C.border,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    minHeight: 48,
+    paddingHorizontal: 4,
+    paddingVertical: 5,
+  },
+  officialRuleText: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  ruleType: {
+    color: C.muted,
+    fontSize: 10,
+    marginTop: 2,
+  },
   removeSite: {
     color: C.purpleText,
     fontSize: 12,
@@ -2201,6 +3385,49 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     flexDirection: 'row',
     minHeight: 52,
+  },
+  deviceCard: {
+    alignItems: 'center',
+    borderRadius: 14,
+    flexDirection: 'row',
+    marginBottom: 12,
+    minHeight: 104,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  connectedDeviceCard: {
+    backgroundColor: C.green,
+  },
+  disconnectedDeviceCard: {
+    backgroundColor: C.orange,
+  },
+  deviceCardMain: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    minHeight: 56,
+  },
+  deviceCardIcon: {
+    alignItems: 'center',
+    backgroundColor: C.white,
+    borderRadius: 24,
+    height: 48,
+    justifyContent: 'center',
+    marginRight: 12,
+    width: 48,
+  },
+  deviceCardText: {
+    flex: 1,
+  },
+  deviceCardName: {
+    color: C.white,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  deviceCardStatus: {
+    color: C.white,
+    fontSize: 12,
+    marginTop: 4,
   },
   deviceIcon: {
     alignItems: 'center',
@@ -2216,9 +3443,96 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
   },
+  deviceDetails: {
+    flex: 1,
+  },
   deviceStatus: {
     color: C.green,
     fontSize: 11,
+  },
+  deviceDetailHero: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  deviceDetailIcon: {
+    alignItems: 'center',
+    backgroundColor: C.lilac,
+    borderRadius: 28,
+    height: 56,
+    justifyContent: 'center',
+    marginBottom: 8,
+    width: 56,
+  },
+  deviceDetailAlias: {
+    color: C.purpleText,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 3,
+    textAlign: 'center',
+  },
+  deviceInfoCard: {
+    borderColor: C.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 9,
+    padding: 12,
+  },
+  deviceInfoLabel: {
+    color: C.muted,
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  deviceInfoValue: {
+    color: C.purpleText,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  unlinkButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 36,
+    minWidth: 75,
+  },
+  pairingCodeLabel: {
+    color: C.purpleText,
+    fontSize: 12,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  pairingCode: {
+    color: C.purpleText,
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: 7,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  pairingExpiry: {
+    color: C.muted,
+    fontSize: 12,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  expiredCode: {
+    color: '#B3261E',
+    fontSize: 12,
+    lineHeight: 17,
+    marginVertical: 8,
+    textAlign: 'center',
+  },
+  backendLimitation: {
+    color: C.muted,
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  inlineError: {
+    color: '#B3261E',
+    fontSize: 12,
+    lineHeight: 17,
+    marginVertical: 8,
+    textAlign: 'center',
   },
   guideIcon: {
     alignItems: 'center',
@@ -2309,6 +3623,60 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginTop: 18,
     textAlign: 'center',
+  },
+  syncStatusCard: {
+    alignItems: 'center',
+    backgroundColor: C.pale,
+    borderRadius: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 12,
+    minHeight: 38,
+    paddingHorizontal: 10,
+  },
+  syncStatusText: {
+    color: C.purpleText,
+    fontSize: 11,
+    marginLeft: 7,
+    textAlign: 'center',
+  },
+  alertCard: {
+    backgroundColor: C.pale,
+    borderColor: C.purple,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 10,
+    padding: 12,
+  },
+  readAlertCard: {
+    borderColor: C.border,
+    opacity: 0.78,
+  },
+  alertHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  alertTitle: {
+    color: C.purpleText,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  unreadBadge: {
+    color: C.orange,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  alertMessage: {
+    color: C.purpleText,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 7,
+  },
+  alertMeta: {
+    color: C.muted,
+    fontSize: 10,
   },
   inlineNotice: {
     color: C.muted,
