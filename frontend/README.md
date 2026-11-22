@@ -23,31 +23,75 @@ Aplicación de control parental para prevenir el acceso a sitios de apuestas ile
 npm install
 npx expo start
 
-src/
-├── components/          # Design system
-│   ├── FigmaScreen.tsx        # Screen wrapper + primitivos base + FIGMA_COLORS
-│   ├── Button.tsx             # Botón filled/outline/disabled
-│   ├── TextField.tsx          # Input con label, secure, pencil
-│   ├── CheckOption.tsx        # Checkbox con label
-│   ├── PinEntry.tsx           # Ingreso de código (4/5 dígitos, masked)
-│   ├── BottomTabs.tsx         # Tabs Home / Historial / Perfil
-│   ├── ActionTile.tsx         # Tile de acción (mode/card, primary/positive)
-│   ├── SettingRow.tsx         # Label + switch
-│   ├── OnboardingBullet.tsx   # Bullet con check verde
-│   ├── LotbaBrandMark.tsx     # Logo
-│   ├── OnboardingArtwork.tsx  # Ilustraciones del onboarding
-│   └── index.ts               # Barrel export
-├── data/                # Contenido estático
-│   ├── onboarding.ts          # Títulos, subtítulos, bullets, artwork por paso
-│   ├── protectionSteps.ts     # Copy aprobado del flujo viejo (referencia)
-│   ├── protectedDevices.ts    # Mock de dispositivos
-│   ├── historyEntries.ts      # Mock de historial
-│   ├── blacklist.ts           # Sitios bloqueados iniciales
-│   └── index.ts
-├── navigation/
-│   ├── types.ts               # RootStackParamList
-│   └── RootNavigator.tsx      # Stack con las 38 rutas
-└── screens/             # 1 archivo por pantalla (38 rutas + 2 shared)
+src
+├── components
+│   ├── ActionTile.tsx
+│   ├── BottomTabs.tsx
+│   ├── Button.tsx
+│   ├── CheckOption.tsx
+│   ├── FigmaScreen.tsx
+│   ├── index.ts
+│   ├── LotbaBrandMark.tsx
+│   ├── OnboardingArtwork.tsx
+│   ├── OnboardingBullet.tsx
+│   ├── PinEntry.tsx
+│   ├── SettingRow.tsx
+│   └── TextField.tsx
+├── data
+│   ├── blacklist.ts
+│   ├── historyEntries.ts
+│   ├── index.ts
+│   ├── onboarding.ts
+│   └── protectionSteps.ts
+├── navigation
+│   ├── RootNavigator.tsx
+│   └── types.ts
+├── screens
+│   ├── AccessCodeConfirmationScreen.tsx
+│   ├── AccessCodeSetupScreen.tsx
+│   ├── AccessibilitySetupScreen.tsx
+│   ├── ActivateScreen.tsx
+│   ├── ActivatingScreen.tsx
+│   ├── AddDeviceScreen.tsx
+│   ├── AutoStartSetupScreen.tsx
+│   ├── BackgroundWorkScreen.tsx
+│   ├── BlacklistScreen.tsx
+│   ├── BlockedSitesScreen.tsx
+│   ├── ConfigProtectionScreen.tsx
+│   ├── ConfigureAccessScreen.tsx
+│   ├── CustomListScreen.tsx
+│   ├── DevicesScreen.tsx
+│   ├── HistoryScreen.tsx
+│   ├── InterruptedScreen.tsx
+│   ├── KeepAppPinnedScreen.tsx
+│   ├── LinkDeviceGuideScreen.tsx
+│   ├── LinkDeviceScreen.tsx
+│   ├── LinkedScreen.tsx
+│   ├── LinkNewDeviceGuideScreen.tsx
+│   ├── LoginScreen.tsx
+│   ├── NotificationPermissionScreen.tsx
+│   ├── OnboardingScreen.tsx
+│   ├── ProfileScreen.tsx
+│   ├── ProtectedCodeScreen.tsx
+│   ├── ProtectedHomeScreen.tsx
+│   ├── RecoverScreen.tsx
+│   ├── RegisterScreen.tsx
+│   ├── RegistrationSuccessScreen.tsx
+│   ├── ResponsibleModeScreen.tsx
+│   ├── ScreenGalleryScreen.tsx
+│   ├── SettingsScreen.tsx
+│   ├── SetupStepScreen.tsx
+│   ├── SplashScreen.tsx
+│   ├── SummaryScreen.tsx
+│   ├── UninstallProtectionScreen.tsx
+│   ├── UsageModeScreen.tsx
+│   └── WelcomeScreen.tsx
+└── services
+    ├── api.ts
+    ├── deviceIdentity.ts
+    └── tokenStorage.ts
+
+6 directories, 61 files
 
 
 Flujos Principales
