@@ -7,9 +7,9 @@ const EMPTY_CHECKSUM = 'd41d8cd98f00b204e9800998ecf8427e';
 
 class SyncService {
   async getSystemRules({ clientVersion, clientChecksum }) {
-  // 1. Obtenemos el conteo, la versión máxima y el hash de contenido en una sola query optimizada
-  // Usamos md5() que viene nativo en PostgreSQL (no requiere extensiones como pgcrypto)
-  const metaQuery = await db.query(`
+    // 1. Obtenemos el conteo, la versión máxima y el hash de contenido en una sola query optimizada
+    // Usamos md5() que viene nativo en PostgreSQL (no requiere extensiones como pgcrypto)
+    const metaQuery = await db.query(`
     SELECT 
         COUNT(*)::int as total, 
         COALESCE(MAX(version_id), MAX(id), 0) as max_version,
@@ -18,41 +18,68 @@ class SyncService {
       WHERE active = true
     `, [EMPTY_CHECKSUM]);
 
-  const { total, max_version, content_hash } = metaQuery.rows[0];
+    const { total, max_version, content_hash } = metaQuery.rows[0];
 
-  const serverVersion = max_version; 
-  const serverChecksum = content_hash; // El checksum ahora es un hash alfanumérico (ej: 'd41d8cd98f00b204e9800998ecf8427e')
+    const serverVersion = max_version;
+    const serverChecksum = content_hash; // El checksum ahora es un hash alfanumérico (ej: 'd41d8cd98f00b204e9800998ecf8427e')
 
-  // 2. Doble verificación estricta: versión numérica y checksum de contenido deben coincidir
-  const isUpToDate = 
-    Number(clientVersion) === serverVersion && 
-    clientChecksum === serverChecksum; // Comparación de strings exactos
+    // 2. Doble verificación estricta: versión numérica y checksum de contenido deben coincidir
+    const isUpToDate =
+      Number(clientVersion) === serverVersion &&
+      clientChecksum === serverChecksum; // Comparación de strings exactos
 
-  if (isUpToDate) {
+    if (isUpToDate) {
+      return {
+        status: 'UP_TO_DATE',
+        current_version: serverVersion,
+        checksum: serverChecksum,
+        syncedAt: new Date().toISOString()
+      };
+    }
+
+    // 3. Si difieren o es la primera sincronización -> Traemos la lista completa
+    const rulesResult = await db.query(
+      `SELECT value, rule_type FROM system_blocklist WHERE active = true`
+    );
+
+    const rules = rulesResult.rows;
+
+    const domain = rules.filter(item => item.rule_type === 'domain').map(item => item.value);
+    const keyword = rules.filter(item => item.rule_type === 'keyword').map(item => item.value);
+    const regex = rules.filter(item => item.rule_type === 'regex').map(item => item.value);
+
     return {
-      status: 'UP_TO_DATE',
+      status: 'RESET',
+
+      /*
+       * IMPLEMENTACIÓN ORIGINAL - JIAN
+       *
+       * Los metadatos de sincronización estaban comentados,
+       * por lo que no se incluían en la respuesta RESET.
+       *
+       * //current_version: serverVersion,
+       * //checksum: serverChecksum,
+       */
+
+      /*
+       * MODIFICACIÓN - LUCÍA
+       * Fecha: 22/11/2026
+       *
+       * Se incorporan current_version y checksum a la
+       * respuesta RESET de la lista general de bloqueo.
+       *
+       * Motivo:
+       * Permitir que el frontend almacene la versión y el
+       * checksum de las reglas recibidas y los envíe en
+       * futuras solicitudes de sincronización.
+       *
+       * Esto permitirá identificar cuándo la lista ya
+       * está actualizada y evitar descargas innecesarias.
+       */
       current_version: serverVersion,
       checksum: serverChecksum,
-      syncedAt: new Date().toISOString()
-    };
-  }
 
-  // 3. Si difieren o es la primera sincronización -> Traemos la lista completa
-  const rulesResult = await db.query(
-    `SELECT value, rule_type FROM system_blocklist WHERE active = true`
-  );
-
-  const rules = rulesResult.rows;
-
-  const domain = rules.filter(item => item.rule_type === 'domain').map(item => item.value);
-  const keyword = rules.filter(item => item.rule_type === 'keyword').map(item => item.value);
-  const regex = rules.filter(item => item.rule_type === 'regex').map(item => item.value);
-
-  return {
-    status: 'RESET',
-    //current_version: serverVersion,
-    //checksum: serverChecksum,
-    data: {
+      data: {
         total: rules.length,
         domain,
         keyword,
@@ -81,7 +108,7 @@ class SyncService {
     const domain = rules
       .filter(item => item.rule_type === 'domain')
       .map(item => ({ id: item.id, value: item.value }));
-      
+
     const keyword = rules
       .filter(item => item.rule_type === 'keyword')
       .map(item => ({ id: item.id, value: item.value }));
@@ -101,7 +128,7 @@ class SyncService {
    * y dispara un Silent Push a todos sus dispositivos vinculados.
    */
   async addCustomRuleForUser({ userId, value, ruleType }) {
-    const ALLOWED_TYPES = ['domain', 'keyword']; 
+    const ALLOWED_TYPES = ['domain', 'keyword'];
 
     if (!ALLOWED_TYPES.includes(ruleType)) {
       const error = new Error(`El tipo de regla '${ruleType}' no está permitido.`);
@@ -148,7 +175,7 @@ class SyncService {
    * Actualiza una regla personalizada existente por su ID.
    */
   async updateCustomRuleForUser({ userId, ruleId, value, ruleType }) {
-    const ALLOWED_TYPES = ['domain', 'keyword']; 
+    const ALLOWED_TYPES = ['domain', 'keyword'];
 
     if (ruleType && !ALLOWED_TYPES.includes(ruleType)) {
       const error = new Error(`El tipo de regla '${ruleType}' no está permitido.`);
@@ -275,7 +302,7 @@ class SyncService {
       `SELECT COUNT(*)::int as total FROM custom_blocklist WHERE id_user = $1 AND active = true`,
       [userId]
     );
-    
+
     const totalRules = countQuery.rows[0].total;
 
     // Si la lista está totalmente vacía, respondemos de inmediato sin tocar string_agg
@@ -306,8 +333,8 @@ class SyncService {
           syncedAt: new Date().toISOString()
         }
       };
-    } 
-    
+    }
+
     // 2. Si hay reglas activas, obtenemos el timestamp y checksum de la lista actual
     const metaQuery = await db.query(
       `SELECT 
@@ -326,7 +353,7 @@ class SyncService {
     const now = Date.now();
     const isOlderThanSevenDays = clientTimestamp ? (now - Number(clientTimestamp)) > SEVEN_DAYS_MS : true;
 
-    const isUpToDate = 
+    const isUpToDate =
       !isOlderThanSevenDays &&
       Number(clientTimestamp) === serverTimestamp &&
       clientChecksum === serverChecksum;
@@ -348,7 +375,7 @@ class SyncService {
     );
 
     const rules = rulesResult.rows;
-    
+
     // Estandarizado a 'domain'
     const domain = rules.filter(item => item.rule_type === 'domain').map(item => item.value);
     const keyword = rules.filter(item => item.rule_type === 'keyword').map(item => item.value);
@@ -359,7 +386,7 @@ class SyncService {
       checksum: serverChecksum,
       data: {
         total: rules.length,
-        domain, 
+        domain,
         keyword,
         syncedAt: new Date().toISOString()
       }
