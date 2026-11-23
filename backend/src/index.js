@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const config = require('./config/config');
 const { initScheduledJobs } = require('./utils/cleanup');
+const apiKeyValidator = require('./middlewares/apiKeyMiddleware');
 
 // Importación de rutas
 const authRoutes = require('./routes/auth.routes');
@@ -16,6 +17,7 @@ const app = express();
 
 // Middlewares globales
 app.use(express.json());
+app.use(apiKeyValidator); // Middleware para validar la API Key en todas las rutas
 
 // Montar módulos de rutas
 app.use('/auth', authRoutes);

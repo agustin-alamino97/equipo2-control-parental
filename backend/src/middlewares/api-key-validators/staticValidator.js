@@ -2,11 +2,11 @@ const crypto = require('crypto');
 
 const validateStaticApiKey = (req) => {
   const clientApiKey = req.headers['x-api-key'];
-  const validApiKey = process.env.API_KEY;
+  const validApiKey = process.env.STATIC_KEY;
 
   // 1. Ingeniería defensiva: Validar que el servidor tenga configurada la API Key obligatoriamente
   if (!validApiKey) {
-    console.error('ERROR CRÍTICO: La variable de entorno API_KEY no está configurada en el servidor.');
+    console.error('ERROR CRÍTICO: La variable de entorno STATIC_KEY no está configurada en el servidor.');
     return {
       isValid: false,
       message: 'Error interno de configuración de seguridad.'
