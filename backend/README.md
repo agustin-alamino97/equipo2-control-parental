@@ -46,6 +46,28 @@ A continuación se detallan todas las peticiones que forman el ciclo completo de
 
 ---
 
+## Autenticación por API Key (`apiKeyMiddleware`)
+
+El middleware de validación de API Key ya está implementado y probado, con soporte modular para múltiples estrategias:
+
+- **`static` (seleccionada para el MVP):** Valida una clave estática configurada en `STATIC_KEY` mediante comparación de tiempo constante (`crypto.timingSafeEqual`).
+- **`hmac` (preparada para futuras iteraciones):** Disponible en la arquitectura de validadores usando `HMAC_SECRET` para firma de peticiones, pero no requerida en el MVP por tiempos de entrega.
+
+### Variables de entorno necesarias
+- `API_VALIDATOR_TYPE`: estrategia activa (`static` o `hmac`; por defecto `static`).
+- `STATIC_KEY`: clave compartida cuando `API_VALIDATOR_TYPE=static`.
+- `HMAC_SECRET`: secreto compartido cuando `API_VALIDATOR_TYPE=hmac`.
+
+### Estado actual en `index.js`
+Por el momento, la aplicación global de `apiKeyMiddleware` en `index.js` se encuentra **comentada** para no bloquear las pruebas o el trabajo diario del resto del equipo mientras se coordina su activación general y el envío del header correspondiente en clientes y demo web.
+
+Para activarlo globalmente cuando corresponda:
+1. Asegurar que `API_VALIDATOR_TYPE` y `STATIC_KEY` (o `HMAC_SECRET`) estén configurados en el entorno.
+2. Descomentar la importación y el registro del middleware en `index.js` (respetando el orden respecto a rutas públicas/healthchecks si existieran).
+3. Incluir el header de API key en todas las peticiones hacia la API.
+
+---
+
 ### 🔑 1. Autenticación de Usuarios (Tutor)
 
 Maneja el registro y la sesión de los tutores.
