@@ -2,6 +2,7 @@ import { tokenStorage } from './tokenStorage';
 
 // Asegurate de tener EXPO_PUBLIC_API_URL en tu archivo .env
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.104:3000';
+const API_KEY = process.env.EXPO_PUBLIC_API_KEY || '';
 
 export type CustomRule = {
     id: string;
@@ -31,7 +32,7 @@ type RawCustomRule = {
 type LoginResponse = {
     JWT: string;
     refresh_token: string;
-    user: { id: string; email: string };
+    user: { id: string; email: string, name?: string | null };
 };
 
 function extractRules(payload: any): CustomRule[] {
@@ -79,13 +80,65 @@ function extractRules(payload: any): CustomRule[] {
 async function persistTokens(data: LoginResponse) {
     await tokenStorage.setAccessToken(data.JWT);
     await tokenStorage.setRefreshToken(data.refresh_token);
+    if (data.user) await tokenStorage.setUser(data.user);
 }
 
-async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
+// --- Refresh automático de JWT ---
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+    if (refreshPromise) return refreshPromise;
+
+    refreshPromise = (async () => {
+        try {
+            const rt = await tokenStorage.getRefreshToken();
+            if (!rt) return false;
+
+            const res = await fetch(`${API_URL}/auth/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 
+                            'x-api-key': API_KEY, },
+                body: JSON.stringify({ refresh_token: rt }),
+            });
+
+            if (!res.ok) {
+                await tokenStorage.clearAll();
+                return false;
+            }
+
+            const data = await res.json();
+
+            // Ajustar si el back devuelve otro nombre (ver paso siguiente)
+            const newAccess = data.JWT ?? data.access_token;
+            const newRefresh = data.refresh_token;
+
+            if (!newAccess) {
+                console.warn('[tryRefresh] Respuesta sin token:', data);
+                return false;
+            }
+
+            await tokenStorage.setAccessToken(newAccess);
+            if (newRefresh) await tokenStorage.setRefreshToken(newRefresh);
+            if (data.user) await tokenStorage.setUser(data.user);
+
+            return true;
+        } catch (e) {
+            console.warn('[tryRefresh] Error:', e);
+            return false;
+        } finally {
+            refreshPromise = null;
+        }
+    })();
+
+    return refreshPromise;
+}
+
+async function fetchWithAuth(endpoint: string, options: RequestInit = {}, _retry = false) {
     const token = await tokenStorage.getAccessToken();
 
     const headers = {
         'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
     };
@@ -97,6 +150,9 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
 
     // El backend devuelve 403 (no 401) cuando el token expiró.
     if (response.status === 401 || response.status === 403) {
+        if (_retry) throw new Error('Sesión expirada. Volvé a iniciar sesión.');
+        const refreshed = await tryRefresh();
+        if (refreshed) return fetchWithAuth(endpoint, options, true);   // ← solo 1 reintento
         throw new Error('Sesión expirada. Volvé a iniciar sesión.');
     }
 
@@ -156,7 +212,8 @@ export const api = {
     ) => {
         const registerRes = await fetch(`${API_URL}/auth/register`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 
+                'x-api-key': API_KEY, },
             body: JSON.stringify({ name, surname, email, password }),
         });
 
@@ -169,9 +226,22 @@ export const api = {
 
         const loginRes = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, },
             body: JSON.stringify({ email, password }),
         });
+
+        if (!loginRes.ok) {
+            // ⬇️ NUEVO: capturar status y body reales
+            const errorBody = await loginRes.json().catch(() => ({}));
+            console.warn('[register] login automático falló', {
+                status: loginRes.status,
+                body: errorBody,
+                email,
+            });
+            throw new Error(
+                `Usuario creado, pero no se pudo iniciar sesión (${loginRes.status}: ${errorBody.error ?? errorBody.message ?? 'sin detalle'}). Probá iniciar sesión manualmente.`
+            );
+        }
 
         if (!loginRes.ok) {
             throw new Error(
@@ -188,7 +258,7 @@ export const api = {
     login: async (email: string, password: string): Promise<LoginResponse> => {
         const res = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY,},
             body: JSON.stringify({ email, password }),
         });
 
@@ -206,6 +276,6 @@ export const api = {
 
     // --- LOGOUT ---
     logout: async () => {
-        await tokenStorage.clear();
+        await tokenStorage.clearAll();
     },
 };

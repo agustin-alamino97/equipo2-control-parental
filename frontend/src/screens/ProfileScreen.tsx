@@ -1,22 +1,48 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
-  Bell,
-  ChevronRight,
-  CircleUserRound,
-  History,
-  LogOut,
-  Shield,
+  Bell, ChevronRight, CircleUserRound, History, LogOut, Shield,
 } from 'lucide-react-native';
 import {
-  FigmaScreen,
-  FIGMA_COLORS,
-  PageTitle,
-  SurfaceCard,
+  FigmaScreen, FIGMA_COLORS, PageTitle, SurfaceCard,
 } from '../components/FigmaScreen';
 import type { AppScreenProps } from '../navigation/types';
+import { tokenStorage } from '../services/tokenStorage';
+
+type User = { id: string; email: string; name?: string | null };
 
 export default function ProfileScreen({ navigation }: AppScreenProps<'Profile'>) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadUser = useCallback(async () => {
+    try {
+      const u = await tokenStorage.getUser();
+      setUser(u);
+    } catch (e) {
+      console.warn('No se pudo leer el usuario:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Recarga cuando la pantalla vuelve al foco (por si cambió el login)
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', loadUser);
+    loadUser();
+    return unsub;
+  }, [navigation, loadUser]);
+
+  const handleSignOut = async () => {
+    await tokenStorage.clearAll();
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+  };
+
+  const displayName = loading
+    ? 'Cargando…'
+    : user?.name || user?.email || 'Sin sesión';
+  const displayEmail = loading ? '' : user?.email ?? '';
+
   return (
     <FigmaScreen onBack={() => navigation.goBack()}>
       <PageTitle title="Mi perfil" subtitle="Gestioná tu cuenta y preferencias." />
@@ -25,39 +51,25 @@ export default function ProfileScreen({ navigation }: AppScreenProps<'Profile'>)
           <CircleUserRound color={FIGMA_COLORS.primary} size={35} />
         </View>
         <View style={styles.profileInfo}>
-          <Text style={styles.name}>Cuenta responsable</Text>
-          <Text style={styles.email}>responsable@ejemplo.com</Text>
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{displayEmail}</Text>
         </View>
       </SurfaceCard>
       <Text style={styles.sectionTitle}>Preferencias</Text>
       <SurfaceCard style={styles.menu}>
-        <MenuItem
-          icon={<History color={FIGMA_COLORS.primary} size={20} />}
-          label="Historial de actividad"
-          onPress={() => navigation.navigate('History')}
-        />
-        <MenuItem
-          icon={<Shield color={FIGMA_COLORS.primary} size={20} />}
-          label="Sitios bloqueados"
-          onPress={() => navigation.navigate('BlockedSites')}
-        />
-        <MenuItem
-          icon={<Bell color={FIGMA_COLORS.primary} size={20} />}
-          label="Notificaciones"
-          onPress={() => navigation.navigate('NotificationPermission')}
-        />
+        <MenuItem icon={<History color={FIGMA_COLORS.primary} size={20} />} label="Historial de actividad" onPress={() => navigation.navigate('History')} />
+        <MenuItem icon={<Shield color={FIGMA_COLORS.primary} size={20} />} label="Sitios bloqueados" onPress={() => navigation.navigate('BlockedSites')} />
+        <MenuItem icon={<Bell color={FIGMA_COLORS.primary} size={20} />} label="Notificaciones" onPress={() => navigation.navigate('NotificationPermission')} />
       </SurfaceCard>
-      <TouchableOpacity
-        accessibilityRole="button"
-        onPress={() => navigation.navigate('Welcome')}
-        style={styles.signOut}
-      >
+      <TouchableOpacity accessibilityRole="button" onPress={handleSignOut} style={styles.signOut}>
         <LogOut color={FIGMA_COLORS.danger} size={19} />
         <Text style={styles.signOutText}>Cerrar sesión</Text>
       </TouchableOpacity>
     </FigmaScreen>
   );
 }
+
+// MenuItem y styles quedan igual que antes
 
 function MenuItem({
   icon,
