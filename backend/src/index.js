@@ -17,7 +17,7 @@ const app = express();
 
 // Middlewares globales
 app.use(express.json());
-//app.use(apiKeyValidator); // Middleware para validar la API Key en todas las rutas
+app.use(apiKeyValidator); // Middleware para validar la API Key en todas las rutas
 
 // Montar módulos de rutas
 app.use('/auth', authRoutes);
