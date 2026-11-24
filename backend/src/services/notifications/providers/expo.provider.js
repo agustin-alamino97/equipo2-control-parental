@@ -1,9 +1,6 @@
 /* ==========================================================================
- * BORRADOR (Pendiente de instalar 'expo-server-sdk' y configurar front-end)
- * 
- * Cuando se active Expo, descomentar todo este bloque y eliminar la clase 
- * placeholder inferior.
- * ==========================================================================
+ * Pendiente configurar Frontend
+ * ==========================================================================*/
 
 const { Expo } = require('expo-server-sdk');
 const expo = new Expo();
@@ -57,4 +54,3 @@ class ExpoNotificationProvider {
 }
 
 module.exports = new ExpoNotificationProvider();
-========================================================================== */
