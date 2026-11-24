@@ -3,7 +3,7 @@ const router = express.Router();
 const apiKeyMiddleware = require('../middlewares/apiKeyMiddleware');
 
 // 1. Ruta de prueba abierta (sin protección)
-router.get('/open', (req, res) => {
+router.get('/ping', (req, res) => {
   return res.status(200).json({
     success: true,
     message: '¡Ruta de prueba abierta funcionando sin problemas!'
