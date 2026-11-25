@@ -18,7 +18,8 @@ export default function LoginScreen({ navigation }: AppScreenProps<'Login'>) {
     const [remember, setRemember] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    const canContinue = email.includes('@') && password.length > 0;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const canContinue = emailRegex.test(email.trim()) && password.length >= 8;
 
     const handleLogin = async () => {
         if (!canContinue) return;
