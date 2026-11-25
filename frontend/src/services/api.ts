@@ -1,7 +1,7 @@
 import { tokenStorage } from './tokenStorage';
 
 // Asegurate de tener EXPO_PUBLIC_API_URL en tu archivo .env
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.104:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.0.109:3000';
 const API_KEY = process.env.EXPO_PUBLIC_API_KEY || '';
 
 export type CustomRule = {
