@@ -35,7 +35,7 @@ export default function OnboardingScreen({
                 {step === 1 ? (
                     <>
                         <Text style={styles.brand}>BA Protege+</Text>
-                        <LotbaBrandMark size={250} />
+                        <LotbaBrandMark size={280} />
                     </>
                 ) : null}
                 <Text style={[styles.title, step > 1 && styles.titleCompact]}>
@@ -81,9 +81,8 @@ const styles = StyleSheet.create({
     },
     brand: {
         color: FIGMA_COLORS.primary,
-        fontSize: 20,
+        fontSize: 30,
         fontWeight: '700',
-        marginBottom: 8,
     },
     title: {
         color: FIGMA_COLORS.text,

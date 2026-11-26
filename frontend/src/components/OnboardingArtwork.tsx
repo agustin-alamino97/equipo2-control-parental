@@ -31,7 +31,7 @@ export default function OnboardingArtwork({ kind }: { kind: ArtworkKind }) {
 
 const styles = StyleSheet.create({
   artwork: {
-    height: 190,
+    height: 230,
     width: 230,
   },
 });
