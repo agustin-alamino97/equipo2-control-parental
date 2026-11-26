@@ -16,27 +16,37 @@ const testRoutes = require('./routes/test.routes');
 const app = express();
 
 // 1. Configurar orígenes permitidos desde el entorno
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
-  : [];
+// const allowedOrigins = process.env.ALLOWED_ORIGINS
+//   ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
+//   : [];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Permite peticiones sin header Origin (ej: apps móviles nativas, Bruno, Postman, curl)
-      console.log('[CORS] Origin recibido:', origin)
-      if (!origin) return callback(null, true);
+// app.use(
+//   cors({
+//     origin: (origin, callback) => {
+//       // Permite peticiones sin header Origin (ej: apps móviles nativas, Bruno, Postman, curl)
+//       console.log('[CORS] Origin recibido:', origin)
+//       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+//       if (allowedOrigins.includes(origin)) {
+//         return callback(null, true);
+//       }
+
+//       return callback(new Error('Origen no permitido por política CORS'));
+//     },
+//     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+//     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'] // Ajusta el nombre del header de tu API key si es distinto
+//   })
+// );
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').filter(Boolean);
+app.use(cors({
+  origin: allowedOrigins.length > 0
+    ? (origin, cb) => {
+        if (!origin || allowedOrigins.includes(origin)) cb(null, true);
+        else cb(new Error('Not allowed by CORS'));
       }
-
-      return callback(new Error('Origen no permitido por política CORS'));
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'] // Ajusta el nombre del header de tu API key si es distinto
-  })
-);
+    : true
+}));
 
 // 2. Parseo de JSON 
 app.use(express.json());
