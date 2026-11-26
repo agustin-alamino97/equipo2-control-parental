@@ -127,7 +127,7 @@ class SyncService {
    * Agrega o reactiva una regla personalizada para el Tutor
    * y dispara un Silent Push a todos sus dispositivos vinculados.
    */
-  async addCustomRuleForUser({ userId, value, ruleType }) {
+  async addCustomRuleForUser({ userId, value, ruleType, categoryId, actionId }) {
     const ALLOWED_TYPES = ['domain', 'keyword'];
 
     if (!ALLOWED_TYPES.includes(ruleType)) {
@@ -138,28 +138,61 @@ class SyncService {
 
     const cleanvalue = normalizeValue(ruleType, value);
 
+    // Valores por defecto si no llegan en el body (ajusta según tu criterio de negocio)
+    const resolvedCategoryId = categoryId ?? 2; // 2: Apuestas y Juegos de Azar
+    const resolvedActionId = actionId ?? 1;     // 1: Bloquear
+
     try {
       const query = `
-        INSERT INTO custom_blocklist (id_user, value, rule_type, active, creation_time)
-        VALUES ($1, $2, $3, true, NOW())
-        ON CONFLICT (id_user, value) 
-        DO UPDATE SET 
-          active = true, 
-          rule_type = EXCLUDED.rule_type, 
+        INSERT INTO custom_blocklist (id_user, value, rule_type, category_id, action_id, active, creation_time)
+        VALUES ($1, $2, $3, $4, $5, true, NOW())
+        ON CONFLICT (id_user, value)
+        DO UPDATE SET
+          active = true,
+          rule_type = EXCLUDED.rule_type,
+          category_id = EXCLUDED.category_id,
+          action_id = EXCLUDED.action_id,
           creation_time = NOW()
-        RETURNING id, value, rule_type, creation_time;
+        RETURNING id, value, rule_type, category_id, action_id, creation_time;
       `;
 
-      const result = await db.query(query, [userId, cleanvalue, ruleType]);
+      const result = await db.query(query, [
+        userId,
+        cleanvalue,
+        ruleType,
+        resolvedCategoryId,
+        resolvedActionId
+      ]);
       const createdRule = result.rows[0];
 
+      // Buscamos las descripciones asociadas a category_id y action_id
+      const detailQuery = `
+        SELECT
+          cb.value,
+          cb.rule_type,
+          c.name AS category_name,
+          a.name AS action_name,
+          cb.creation_time
+        FROM custom_blocklist cb
+        LEFT JOIN categories c ON c.id = cb.category_id
+        LEFT JOIN actions a ON a.id = cb.action_id
+        WHERE cb.id = $1;
+      `;
+
+      const detailResult = await db.query(detailQuery, [createdRule.id]);
+      const ruleData = detailResult.rows[0] || {
+        value: createdRule.value,
+        rule_type: createdRule.rule_type,
+        creation_time: createdRule.creation_time
+      };
+
       // Disparar Silent Push
-      await this._notifyDevices(userId, createdRule.creation_time);
+      await this._notifyDevices(userId, ruleData.creation_time);
 
       return {
         success: true,
         message: 'Regla agregada o actualizada correctamente',
-        data: createdRule
+        data: ruleData
       };
     } catch (dbError) {
       if (dbError.code === '23505') {

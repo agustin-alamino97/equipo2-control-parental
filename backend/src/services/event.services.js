@@ -100,6 +100,7 @@ const procesarAlertaSiCorresponde = async (evento, deviceId) => {
   const result = await db.query(query, [deviceId]);
 
   if (result.rows.length === 0) {
+    //console.log('[ALERTA PUSH] No se encontraron sesiones activas con push_token para deviceId:', deviceId);
     return null;
   }
 
@@ -108,6 +109,7 @@ const procesarAlertaSiCorresponde = async (evento, deviceId) => {
 
   const notificacionesEnviadas = [];
   for (const row of result.rows) {
+    //console.log('[ALERTA PUSH] Intentando enviar push a token:', row.push_token);
     const response = await notificationService.enviarNotificacion(row.push_token, {
       title,
       body,
@@ -118,6 +120,7 @@ const procesarAlertaSiCorresponde = async (evento, deviceId) => {
         eventTime: evento.event_time
       }
     });
+    //console.log('[ALERTA PUSH] Respuesta de enviarNotificacion:', JSON.stringify(response));
     notificacionesEnviadas.push(response);
   }
 

@@ -49,12 +49,14 @@ class SyncController {
   async addCustomRuleForUser(req, res, next) {
     try {
       const userId = req.user.id;
-      const { value, rule_type } = req.body;
+      const { value, rule_type, category_id, action_id } = req.body;
 
       const result = await syncService.addCustomRuleForUser({
         userId,
         value,
-        ruleType: rule_type
+        ruleType: rule_type,
+        categoryId: category_id,
+        actionId: action_id
       });
 
       return res.status(201).json(result);
